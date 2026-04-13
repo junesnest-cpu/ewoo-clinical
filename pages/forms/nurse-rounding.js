@@ -64,13 +64,12 @@ export default function NurseRounding() {
     th: { background: '#f1f5f9', padding: '8px 10px', fontWeight: 600, textAlign: 'left', borderBottom: '2px solid #cbd5e1', fontSize: 13, color: '#475569' },
     td: { padding: '7px 10px', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' },
     roomGap: { height: 6, background: '#f8fafc' },
-    name: { fontWeight: 700, fontSize: 15, color: '#0f172a', whiteSpace: 'nowrap' },
-    room: { fontSize: 13, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' },
-    bed: { fontSize: 13, color: '#64748b', whiteSpace: 'nowrap', textAlign: 'center' },
+    name: { fontWeight: 700, fontSize: 15, color: '#0f172a', whiteSpace: 'nowrap', minWidth: 72, flexShrink: 0 },
+    room: { fontSize: 13, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'center' },
     memo: { fontSize: 12, color: '#374151', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', maxWidth: 300 },
-    badge: { display: 'inline-block', padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 600, marginRight: 3, marginBottom: 2, whiteSpace: 'nowrap' },
-    badgeWrap: { display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-    nameCell: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+    badge: { display: 'inline-block', padding: '1px 6px', borderRadius: 10, fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', lineHeight: '18px' },
+    badgeArea: { display: 'flex', gap: 3, flexWrap: 'wrap', flexShrink: 0 },
+    nameCell: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' },
     noteInput: { width: '100%', border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 13, resize: 'vertical', minHeight: 30, outline: 'none', fontFamily: 'inherit' },
     loading: { textAlign: 'center', padding: 40, color: '#64748b' },
   };
@@ -96,9 +95,8 @@ export default function NurseRounding() {
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={{ ...S.th, width: 50 }}>병실</th>
-                <th style={{ ...S.th, width: 35 }}>병상</th>
-                <th style={{ ...S.th, width: 150 }}>이름</th>
+                <th style={{ ...S.th, width: 55 }}>병실</th>
+                <th style={{ ...S.th, width: 200 }}>이름</th>
                 <th style={{ ...S.th, width: 260 }}>환자정보 메모</th>
                 <th style={S.th}>참고사항</th>
               </tr>
@@ -108,20 +106,21 @@ export default function NurseRounding() {
                 const roomPts = grouped[floor][roomLabel];
                 return (
                   <React.Fragment key={roomLabel}>
-                    {ri > 0 && <tr><td colSpan={5} style={S.roomGap}></td></tr>}
+                    {ri > 0 && <tr><td colSpan={4} style={S.roomGap}></td></tr>}
                     {roomPts.map(p => {
                       const badges = getBadges(p.memo);
                       const isAlert = badges.some(b => b.id === 'adr');
                       return (
                         <tr key={p.chartNo} style={isAlert ? { background: '#fef2f2' } : undefined}>
-                          <td style={{ ...S.td, ...S.room }}>{p.roomLabel}</td>
-                          <td style={{ ...S.td, ...S.bed }}>{p.bed}</td>
+                          <td style={{ ...S.td, ...S.room }}>{p.roomLabel}-{p.bed}</td>
                           <td style={S.td}>
                             <div style={S.nameCell}>
                               <span style={S.name}>{p.name}</span>
-                              {badges.map(b => (
-                                <span key={b.id} style={{ ...S.badge, color: b.color, background: b.bg }}>{b.label}</span>
-                              ))}
+                              <div style={S.badgeArea}>
+                                {badges.map(b => (
+                                  <span key={b.id} style={{ ...S.badge, color: b.color, background: b.bg }}>{b.label}</span>
+                                ))}
+                              </div>
                             </div>
                           </td>
                           <td style={{ ...S.td, ...S.memo }}>{p.memo || '-'}</td>
