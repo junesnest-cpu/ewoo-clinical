@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
@@ -106,39 +106,39 @@ export default function NurseRounding() {
             <tbody>
               {Object.keys(grouped[floor]).sort().map((roomLabel, ri) => {
                 const roomPts = grouped[floor][roomLabel];
-                return roomPts.map((p, pi) => {
-                  const badges = getBadges(p.memo);
-                  const isAlert = badges.some(b => b.id === 'adr');
-                  const isFirst = pi === 0;
-                  const isLast = pi === roomPts.length - 1;
-                  return [
-                    isFirst && ri > 0 ? <tr key={`gap-${roomLabel}`}><td colSpan={5} style={S.roomGap}></td></tr> : null,
-                    <tr key={p.chartNo} style={isAlert ? { background: '#fef2f2' } : undefined}>
-                      {isFirst ? (
-                        <td style={{ ...S.td, ...S.room, borderBottom: isLast ? '1px solid #e2e8f0' : 'none' }} rowSpan={roomPts.length}>{roomLabel}</td>
-                      ) : null}
-                      <td style={{ ...S.td, ...S.bed }}>{p.bed}</td>
-                      <td style={S.td}>
-                        <div style={S.nameCell}>
-                          <span style={S.name}>{p.name}</span>
-                          {badges.map(b => (
-                            <span key={b.id} style={{ ...S.badge, color: b.color, background: b.bg }}>{b.label}</span>
-                          ))}
-                        </div>
-                      </td>
-                      <td style={{ ...S.td, ...S.memo }}>{p.memo || '-'}</td>
-                      <td style={S.td}>
-                        <textarea
-                          style={S.noteInput}
-                          value={notes[p.chartNo] || ''}
-                          onChange={e => updateNote(p.chartNo, e.target.value)}
-                          placeholder="참고사항 입력"
-                          rows={1}
-                        />
-                      </td>
-                    </tr>
-                  ];
-                });
+                return (
+                  <React.Fragment key={roomLabel}>
+                    {ri > 0 && <tr><td colSpan={5} style={S.roomGap}></td></tr>}
+                    {roomPts.map(p => {
+                      const badges = getBadges(p.memo);
+                      const isAlert = badges.some(b => b.id === 'adr');
+                      return (
+                        <tr key={p.chartNo} style={isAlert ? { background: '#fef2f2' } : undefined}>
+                          <td style={{ ...S.td, ...S.room }}>{p.roomLabel}</td>
+                          <td style={{ ...S.td, ...S.bed }}>{p.bed}</td>
+                          <td style={S.td}>
+                            <div style={S.nameCell}>
+                              <span style={S.name}>{p.name}</span>
+                              {badges.map(b => (
+                                <span key={b.id} style={{ ...S.badge, color: b.color, background: b.bg }}>{b.label}</span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ ...S.td, ...S.memo }}>{p.memo || '-'}</td>
+                          <td style={S.td}>
+                            <textarea
+                              style={S.noteInput}
+                              value={notes[p.chartNo] || ''}
+                              onChange={e => updateNote(p.chartNo, e.target.value)}
+                              placeholder="참고사항 입력"
+                              rows={1}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                );
               })}
             </tbody>
           </table>
