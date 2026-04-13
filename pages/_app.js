@@ -74,7 +74,7 @@ const LS = {
 };
 
 function encodeEmail(email) {
-  return email.replace(/\./g, ',');
+  return (email || '').replace(/\./g, ',').replace(/@/g, '_at_');
 }
 
 export default function App({ Component, pageProps }) {
