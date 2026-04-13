@@ -48,7 +48,7 @@ export default async function handler(req, res) {
         bed: r.bedKey,
         roomLabel,
         admitDate: r.admitDate,
-        memo: String(r.memo || '').trim(),
+        memo: String(r.memo || '').trim().replace(/(\r?\n){2,}/g, '\n'),
       };
     });
 
