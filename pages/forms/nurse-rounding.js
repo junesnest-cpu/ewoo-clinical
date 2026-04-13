@@ -2,9 +2,21 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
-
-// 병동 층 구분
 const FLOOR_LABELS = { '2': '2층', '3': '3층', '5': '5층', '6': '6층' };
+
+// 뱃지 정의: { id, label, color, bg, match(memo) }
+const BADGES = [
+  { id: 'left',  label: '왼팔',  color: '#0369a1', bg: '#e0f2fe', match: m => /왼팔/.test(m) },
+  { id: 'right', label: '오른팔', color: '#7c3aed', bg: '#ede9fe', match: m => /오른팔/.test(m) },
+  { id: 'leg',   label: '하지',  color: '#0d9488', bg: '#ccfbf1', match: m => /하지/.test(m) },
+  { id: 'dm',    label: '당뇨',  color: '#ca8a04', bg: '#fef9c3', match: m => /당뇨|DM(?![A-Z])/i.test(m) },
+  { id: 'htn',   label: '고혈압', color: '#dc2626', bg: '#fee2e2', match: m => /고혈압|HTN/i.test(m) },
+  { id: 'adr',   label: '알러지', color: '#be123c', bg: '#ffe4e6', match: m => /알러지|알레르기|ADR|allergy/i.test(m) },
+];
+
+function getBadges(memo) {
+  return BADGES.filter(b => b.match(memo));
+}
 
 export default function NurseRounding() {
   const [patients, setPatients] = useState([]);
@@ -27,12 +39,13 @@ export default function NurseRounding() {
     })();
   }, []);
 
-  // 병동(층)별 그룹핑
+  // 병동(층)별 그룹핑 → 병실별 서브그룹
   const grouped = {};
   patients.forEach(p => {
     const floor = String(p.dong);
-    if (!grouped[floor]) grouped[floor] = [];
-    grouped[floor].push(p);
+    if (!grouped[floor]) grouped[floor] = {};
+    if (!grouped[floor][p.roomLabel]) grouped[floor][p.roomLabel] = [];
+    grouped[floor][p.roomLabel].push(p);
   });
 
   const updateNote = (chartNo, value) => {
@@ -40,24 +53,31 @@ export default function NurseRounding() {
   };
 
   const S = {
-    container: { maxWidth: 900, margin: '0 auto', padding: '16px 12px' },
+    container: { maxWidth: 960, margin: '0 auto', padding: '16px 12px' },
     header: { background: '#0f172a', color: '#fff', padding: '20px 24px', borderRadius: 12, marginBottom: 16, position: 'relative' },
     date: { fontSize: 22, fontWeight: 800, letterSpacing: 1 },
     title: { fontSize: 14, color: '#94a3b8', marginTop: 4 },
     back: { position: 'absolute', top: 20, right: 24, color: '#94a3b8', fontSize: 14, cursor: 'pointer' },
-    floorHeader: { background: '#1e3a5f', color: '#fff', padding: '10px 16px', borderRadius: '8px 8px 0 0', fontSize: 16, fontWeight: 700, marginTop: 16 },
+    floorHeader: { background: '#1e3a5f', color: '#fff', padding: '10px 16px', borderRadius: '8px 8px 0 0', fontSize: 16, fontWeight: 700, marginTop: 20 },
+    count: { fontSize: 13, color: '#94a3b8', marginLeft: 8, fontWeight: 400 },
     table: { width: '100%', borderCollapse: 'collapse', marginBottom: 2, fontSize: 14 },
     th: { background: '#f1f5f9', padding: '8px 10px', fontWeight: 600, textAlign: 'left', borderBottom: '2px solid #cbd5e1', fontSize: 13, color: '#475569' },
-    td: { padding: '8px 10px', borderBottom: '1px solid #e2e8f0', verticalAlign: 'top' },
+    td: { padding: '7px 10px', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' },
+    roomGap: { height: 6, background: '#f8fafc' },
     name: { fontWeight: 700, fontSize: 15, color: '#0f172a', whiteSpace: 'nowrap' },
-    room: { fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' },
-    memo: { fontSize: 12, color: '#dc2626', lineHeight: 1.5, whiteSpace: 'pre-line', maxWidth: 300 },
-    noteInput: { width: '100%', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 8px', fontSize: 13, resize: 'vertical', minHeight: 32, outline: 'none', fontFamily: 'inherit' },
+    room: { fontSize: 13, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' },
+    bed: { fontSize: 13, color: '#64748b', whiteSpace: 'nowrap', textAlign: 'center' },
+    memo: { fontSize: 12, color: '#374151', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', maxWidth: 300 },
+    badge: { display: 'inline-block', padding: '1px 7px', borderRadius: 10, fontSize: 11, fontWeight: 600, marginRight: 3, marginBottom: 2, whiteSpace: 'nowrap' },
+    badgeWrap: { display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+    nameCell: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+    noteInput: { width: '100%', border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 8px', fontSize: 13, resize: 'vertical', minHeight: 30, outline: 'none', fontFamily: 'inherit' },
     loading: { textAlign: 'center', padding: 40, color: '#64748b' },
-    count: { fontSize: 13, color: '#94a3b8', marginLeft: 8, fontWeight: 400 },
   };
 
   if (loading) return <div style={S.loading}>환자 목록 조회 중...</div>;
+
+  const floorCount = floor => Object.values(grouped[floor] || {}).reduce((s, arr) => s + arr.length, 0);
 
   return (
     <div style={S.container}>
@@ -67,44 +87,58 @@ export default function NurseRounding() {
         <Link href="/" style={S.back}>← 메인</Link>
       </div>
 
-      {Object.entries(grouped).sort(([a], [b]) => Number(a) - Number(b)).map(([floor, pts]) => (
+      {Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(floor => (
         <div key={floor}>
           <div style={S.floorHeader}>
             {FLOOR_LABELS[floor] || `${floor}층`}
-            <span style={S.count}>{pts.length}명</span>
+            <span style={S.count}>{floorCount(floor)}명</span>
           </div>
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={{ ...S.th, width: 70 }}>이름</th>
                 <th style={{ ...S.th, width: 50 }}>병실</th>
                 <th style={{ ...S.th, width: 35 }}>병상</th>
-                <th style={{ ...S.th, width: 250 }}>환자정보 메모</th>
+                <th style={{ ...S.th, width: 150 }}>이름</th>
+                <th style={{ ...S.th, width: 260 }}>환자정보 메모</th>
                 <th style={S.th}>참고사항</th>
               </tr>
             </thead>
             <tbody>
-              {pts.map(p => {
-                const isAlert = p.memo.includes('ADR') || p.memo.includes('알러지') || p.memo.includes('알레르기') || p.memo.includes('★');
-                return (
-                  <tr key={p.chartNo} style={isAlert ? { background: '#fef2f2' } : undefined}>
-                    <td style={{ ...S.td, ...S.name }}>{p.name}</td>
-                    <td style={{ ...S.td, ...S.room }}>{p.roomLabel}</td>
-                    <td style={{ ...S.td, ...S.room, textAlign: 'center' }}>{p.bed}</td>
-                    <td style={{ ...S.td, ...S.memo, color: isAlert ? '#dc2626' : '#374151' }}>
-                      {p.memo || '-'}
-                    </td>
-                    <td style={S.td}>
-                      <textarea
-                        style={S.noteInput}
-                        value={notes[p.chartNo] || ''}
-                        onChange={e => updateNote(p.chartNo, e.target.value)}
-                        placeholder="라운딩 참고사항 입력"
-                        rows={1}
-                      />
-                    </td>
-                  </tr>
-                );
+              {Object.keys(grouped[floor]).sort().map((roomLabel, ri) => {
+                const roomPts = grouped[floor][roomLabel];
+                return roomPts.map((p, pi) => {
+                  const badges = getBadges(p.memo);
+                  const isAlert = badges.some(b => b.id === 'adr');
+                  const isFirst = pi === 0;
+                  const isLast = pi === roomPts.length - 1;
+                  return [
+                    isFirst && ri > 0 ? <tr key={`gap-${roomLabel}`}><td colSpan={5} style={S.roomGap}></td></tr> : null,
+                    <tr key={p.chartNo} style={isAlert ? { background: '#fef2f2' } : undefined}>
+                      {isFirst ? (
+                        <td style={{ ...S.td, ...S.room, borderBottom: isLast ? '1px solid #e2e8f0' : 'none' }} rowSpan={roomPts.length}>{roomLabel}</td>
+                      ) : null}
+                      <td style={{ ...S.td, ...S.bed }}>{p.bed}</td>
+                      <td style={S.td}>
+                        <div style={S.nameCell}>
+                          <span style={S.name}>{p.name}</span>
+                          {badges.map(b => (
+                            <span key={b.id} style={{ ...S.badge, color: b.color, background: b.bg }}>{b.label}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ ...S.td, ...S.memo }}>{p.memo || '-'}</td>
+                      <td style={S.td}>
+                        <textarea
+                          style={S.noteInput}
+                          value={notes[p.chartNo] || ''}
+                          onChange={e => updateNote(p.chartNo, e.target.value)}
+                          placeholder="참고사항 입력"
+                          rows={1}
+                        />
+                      </td>
+                    </tr>
+                  ];
+                });
               })}
             </tbody>
           </table>
