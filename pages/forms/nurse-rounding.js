@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useAuth } from '../_app';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const FLOOR_LABELS = { '2': '2층', '3': '3층', '5': '5층', '6': '6층' };
@@ -13,11 +14,6 @@ const BADGES = [
   { id: 'adr',   label: '알러지', color: '#be123c', bg: '#ffe4e6', match: m => /알러지|알레르기|ADR|allergy/i.test(m) },
 ];
 
-const NURSES = [
-  '간호1', '간호2', '간호3', '간호4', '간호5',
-  '간호6', '간호7', '간호8', '간호9', '간호10',
-];
-
 function getBadges(memo) {
   return BADGES.filter(b => b.match(memo));
 }
@@ -28,22 +24,17 @@ function todayStr() {
 }
 
 export default function NurseRounding() {
+  const { userName } = useAuth() || {};
+  const userId = userName || '';
   const [patients, setPatients] = useState([]);
   const [notes, setNotes] = useState({});
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState(null);
-  const [userId, setUserId] = useState('');
   const saveTimers = useRef({});
 
   const dateKey = todayStr();
   const now = new Date();
   const dateDisplay = `${now.getFullYear()}. ${now.getMonth() + 1}. ${now.getDate()} (${DAY_NAMES[now.getDay()]})`;
-
-  // 사용자 ID 로컬 저장/복원
-  useEffect(() => {
-    const saved = localStorage.getItem('rounding_userId');
-    if (saved) setUserId(saved);
-  }, []);
 
   // 환자 목록 조회 (Firestore → fallback EMR)
   useEffect(() => {
@@ -107,10 +98,6 @@ export default function NurseRounding() {
     saveNote(chartNo, value);
   };
 
-  const selectUser = (id) => {
-    setUserId(id);
-    localStorage.setItem('rounding_userId', id);
-  };
 
   // 병동(층)별 → 병실별 그룹핑
   const grouped = {};
@@ -129,8 +116,6 @@ export default function NurseRounding() {
     date: { fontSize: 22, fontWeight: 800, letterSpacing: 1 },
     title: { fontSize: 14, color: '#94a3b8', marginTop: 4 },
     back: { position: 'absolute', top: 20, right: 24, color: '#94a3b8', fontSize: 14, cursor: 'pointer' },
-    userBar: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 },
-    userBtn: { padding: '4px 12px', borderRadius: 16, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none' },
     syncInfo: { fontSize: 12, color: '#64748b', marginTop: 6 },
     floorHeader: { background: '#1e3a5f', color: '#fff', padding: '10px 16px', borderRadius: '8px 8px 0 0', fontSize: 16, fontWeight: 700, marginTop: 20 },
     count: { fontSize: 13, color: '#94a3b8', marginLeft: 8, fontWeight: 400 },
@@ -156,20 +141,8 @@ export default function NurseRounding() {
         <div style={S.date}>{dateDisplay}</div>
         <div style={S.title}>간호과 환자 라운딩 체크</div>
         <Link href="/" style={S.back}>← 메인</Link>
-        <div style={S.userBar}>
-          {NURSES.map(n => (
-            <button key={n} style={{ ...S.userBtn, background: userId === n ? '#3b82f6' : '#334155', color: '#fff' }}
-              onClick={() => selectUser(n)}>{n}</button>
-          ))}
-        </div>
         {lastSync && <div style={S.syncInfo}>동기화: {new Date(lastSync).toLocaleString('ko-KR')}</div>}
       </div>
-
-      {!userId && (
-        <div style={{ background: '#fef3c7', padding: 16, borderRadius: 8, marginBottom: 16, fontSize: 14, color: '#92400e' }}>
-          상단에서 사용자를 선택해주세요. 참고사항이 사용자별로 저장됩니다.
-        </div>
-      )}
 
       {Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(floor => (
         <div key={floor}>
