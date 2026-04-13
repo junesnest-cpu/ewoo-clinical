@@ -17,7 +17,7 @@ export default async function handler(req, res) {
           b.bedm_cham AS chartNo, b.bedm_in_date AS admitDate,
           (SELECT TOP 1 chamWhanja FROM VIEWJUBLIST WHERE chamKey = b.bedm_cham) AS name,
           p.INSUCLS AS insuCls, p.INDAT AS inDate, p.OUTDAT AS outDate,
-          (SELECT TOP 1 chamJumin FROM VIEWJUBLIST WHERE chamKey = b.bedm_cham) AS birthInfo
+          (SELECT TOP 1 chamJumin1 FROM VIEWJUBLIST WHERE chamKey = b.bedm_cham) AS birthInfo
         FROM Wbedm b
         JOIN SILVER_PATIENT_INFO p ON p.CHARTNO = b.bedm_cham
           AND p.INDAT = (SELECT MAX(INDAT) FROM SILVER_PATIENT_INFO WHERE CHARTNO = b.bedm_cham)
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
 
       // 환자 기본정보
       const basicR = await pool.request().query(`
-        SELECT TOP 1 chamWhanja AS name, chamJumin AS jumin, chamSex AS sex
+        SELECT TOP 1 chamWhanja AS name, chamJumin1 AS jumin, chamSex AS sex
         FROM VIEWJUBLIST WHERE chamKey = '${chartNo}'
       `);
       const basic = basicR.recordset[0] || {};
