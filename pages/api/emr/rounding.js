@@ -18,6 +18,12 @@ export default async function handler(req, res) {
   try {
     const pool = await getPool();
     const result = await pool.request().query(`
+      WITH currentPats AS (
+        SELECT CHARTNO, INSUCLS,
+          ROW_NUMBER() OVER (PARTITION BY CHARTNO ORDER BY INDAT DESC) AS rn
+        FROM SILVER_PATIENT_INFO
+        WHERE OUTDAT IS NULL OR OUTDAT = ''
+      )
       SELECT
         b.bedm_dong   AS dong,
         b.bedm_room   AS room,
@@ -27,13 +33,8 @@ export default async function handler(req, res) {
         (SELECT TOP 1 chamWhanja FROM VIEWJUBLIST WHERE chamKey = b.bedm_cham) AS name,
         ISNULL(e.chametc_memo, '') AS memo
       FROM Wbedm b
+      JOIN currentPats cp ON cp.CHARTNO = b.bedm_cham AND cp.rn = 1 AND cp.INSUCLS <> '50'
       LEFT JOIN WchamEtc e ON e.chametc_cham = b.bedm_cham
-      JOIN (
-        SELECT CHARTNO, MAX(INDAT) AS maxIn
-        FROM SILVER_PATIENT_INFO
-        WHERE INSUCLS NOT IN ('50')
-        GROUP BY CHARTNO
-      ) p ON p.CHARTNO = b.bedm_cham
       WHERE b.bedm_cham IS NOT NULL AND b.bedm_cham <> ''
       ORDER BY b.bedm_dong, b.bedm_room, b.bedm_key
     `);
