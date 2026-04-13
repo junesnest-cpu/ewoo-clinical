@@ -1,7 +1,10 @@
 import Head from 'next/head';
 import { useState, useEffect, createContext, useContext } from 'react';
-import { auth } from '../lib/firebaseConfig';
+import { auth, approvalDb } from '../lib/firebaseConfig';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { ref, get } from 'firebase/database';
+
+const ALLOWED_DEPTS = ['의과', '간호과'];
 
 // 인증 컨텍스트
 const AuthContext = createContext(null);
@@ -70,16 +73,45 @@ const LS = {
   footer: { marginTop: 24, fontSize: 11, color: '#94a3b8', textAlign: 'center' },
 };
 
+function encodeEmail(email) {
+  return email.replace(/\./g, ',');
+}
+
 export default function App({ Component, pageProps }) {
   const [user, setUser] = useState(undefined);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [deptError, setDeptError] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
+    const unsub = onAuthStateChanged(auth, (u) => { setUser(u); if (!u) { setProfile(null); setDeptError(false); setLoading(false); } });
     return () => unsub();
   }, []);
 
-  const userName = user?.email?.replace('@ewoo.com', '') || '';
+  // 로그인 후 ewoo-approval DB에서 프로필(부서) 확인
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const emailKey = encodeEmail(user.email);
+        const snap = await get(ref(approvalDb, `users/${emailKey}`));
+        const val = snap.val();
+        if (val && ALLOWED_DEPTS.includes(val.department)) {
+          setProfile(val);
+          setDeptError(false);
+        } else {
+          setProfile(null);
+          setDeptError(true);
+        }
+      } catch (e) {
+        setDeptError(true);
+      }
+      setLoading(false);
+    })();
+  }, [user]);
+
+  const userName = profile?.name || user?.email?.replace('@ewoo.com', '') || '';
+  const department = profile?.department || '';
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#0f2744', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -98,8 +130,31 @@ export default function App({ Component, pageProps }) {
     </>
   );
 
+  if (deptError) return (
+    <>
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>이우병원 임상서식</title>
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet" />
+      </Head>
+      <div style={{ minHeight: '100vh', background: '#0f2744', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '36px 32px', maxWidth: 360, textAlign: 'center', fontFamily: "'Noto Sans KR',sans-serif" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#0f2744', marginBottom: 8 }}>접근 권한 없음</div>
+          <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20, lineHeight: 1.6 }}>
+            임상서식 시스템은 <b>의과</b>와 <b>간호과</b> 소속만 이용 가능합니다.
+          </div>
+          <button onClick={() => signOut(auth)}
+            style={{ background: '#0f2744', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            로그아웃
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
   return (
-    <AuthContext.Provider value={{ user, userName }}>
+    <AuthContext.Provider value={{ user, userName, department, profile }}>
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>이우병원 임상서식</title>
@@ -111,7 +166,7 @@ export default function App({ Component, pageProps }) {
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet" />
       </Head>
       <div style={{ background: '#0f2744', color: '#94a3b8', fontSize: 11, padding: '4px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-        <span>👤 <b style={{ color: '#e2e8f0' }}>{userName}</b>님 로그인 중</span>
+        <span>👤 <b style={{ color: '#e2e8f0' }}>{userName}</b> · {department}</span>
         <button onClick={() => signOut(auth)}
           style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
           로그아웃
