@@ -233,11 +233,12 @@ export default function VitalCheck() {
   }, [dateKey, session, vitals, userId]);
 
   const updateVital = (chartNo, field, value) => {
+    // 입력 중간 상태("36.", "36.5")를 문자열로 유지
     setVitals(prev => ({
       ...prev,
       [chartNo]: {
         ...prev[chartNo],
-        [session]: { ...(prev[chartNo]?.[session] || {}), [field]: value === '' ? null : Number(value) },
+        [session]: { ...(prev[chartNo]?.[session] || {}), [field]: value },
       },
     }));
     saveVital(chartNo, field, value);
