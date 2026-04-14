@@ -81,18 +81,12 @@ function trySplitNumber(n) {
   return [n];
 }
 
-// 음성 텍스트에서 숫자 추출 (아라비아 + 한국어 + 큰 숫자 분리)
+// 음성 텍스트에서 숫자 추출 (큰 숫자 분리 포함)
 function extractNumbers(text) {
-  // 한국어 숫자 단어를 아라비아로 변환
-  let converted = text
-    .replace(/점/g, '.')
-    .replace(/백/g, '00').replace(/십/g, '0')
-    .replace(/하나|한/g, '1').replace(/둘|두/g, '2').replace(/셋|세/g, '3')
-    .replace(/넷|네/g, '4').replace(/다섯/g, '5').replace(/여섯/g, '6')
-    .replace(/일곱/g, '7').replace(/여덟/g, '8').replace(/아홉/g, '9')
-    .replace(/영|공/g, '0');
-  // 아라비아 숫자 매칭 (소수점 포함, 한글 뒤의 숫자도 포함)
-  const matches = converted.match(/[\d]+\.?[\d]*/g);
+  // 한국어 단일 글자 변환은 이름 오염 위험이 있으므로 제거
+  // (예: "이난영" → "이난0" 방지)
+  // 음성 API가 이미 숫자를 아라비아로 출력하므로 직접 추출
+  const matches = text.match(/[\d]+\.?[\d]*/g);
   if (!matches) return [];
 
   const raw = matches.map(m => parseFloat(m)).filter(n => !isNaN(n));
@@ -254,11 +248,23 @@ export default function VitalCheck() {
     })();
   }, [dateKey, session, vitals, userId]);
 
+  // 이미 바이탈이 입력된 환자인지 확인
+  const hasVitals = useCallback((chartNo) => {
+    const v = vitals[chartNo]?.[session];
+    return v && (v.sys != null || v.dia != null || v.hr != null || v.bt != null);
+  }, [vitals, session]);
+
   // 음성 버퍼 파싱 시도
   const tryParse = useCallback((text) => {
     const patient = matchPatient(text, patients);
     const nums = extractNumbers(text);
     if (patient && nums.length >= 4) {
+      if (hasVitals(patient.chartNo)) {
+        setVoiceStatus(`${patient.name}: 이미 입력됨 — 수정은 직접 입력해주세요`);
+        voiceBuffer.current = '';
+        setVoiceText('');
+        return true; // 버퍼는 비우되 덮어쓰지 않음
+      }
       setPatientVitals(patient.chartNo, nums);
       setVoiceStatus(`${patient.name}: BP ${nums[0]}/${nums[1]}, HR ${nums[2]}, BT ${nums[3]}${nums[4] != null ? `, FBS ${nums[4]}` : ''}${nums[5] != null ? `, PP2 ${nums[5]}` : ''}`);
       voiceBuffer.current = '';
@@ -271,7 +277,7 @@ export default function VitalCheck() {
       setVoiceStatus(`인식: "${text}" — 숫자 ${nums.length}개 (${nums.join(', ')}) / 최소 4개 필요`);
     }
     return false;
-  }, [patients, setPatientVitals]);
+  }, [patients, setPatientVitals, hasVitals]);
 
   // 음성 인식 (연속 모드 + 자동 재시작)
   const toggleVoice = useCallback(() => {
