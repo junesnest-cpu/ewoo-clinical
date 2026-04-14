@@ -397,8 +397,9 @@ export default function VitalCheck() {
     roomGap: { height: 15, background: '#f8fafc' },
     name: { fontWeight: 700, fontSize: 14, color: '#0f172a', cursor: 'pointer', whiteSpace: 'nowrap' },
     badge: { display: 'inline-block', padding: '1px 5px', borderRadius: 8, fontSize: 9, fontWeight: 600, whiteSpace: 'nowrap', lineHeight: '16px' },
-    vInput: { width: '100%', border: '1px solid #e2e8f0', borderRadius: 5, padding: '4px 2px', fontSize: 14, textAlign: 'center', outline: 'none', fontFamily: 'inherit', fontWeight: 600 },
-    prevVal: { fontSize: 10, color: '#94a3b8', lineHeight: '14px', height: 14, textAlign: 'center' },
+    vCell: { display: 'flex', alignItems: 'center', gap: 2 },
+    vInput: { width: '60%', border: '1px solid #e2e8f0', borderRadius: 5, padding: '4px 2px', fontSize: 14, textAlign: 'center', outline: 'none', fontFamily: 'inherit', fontWeight: 600, flexShrink: 0 },
+    prevVal: { width: '40%', fontSize: 10, color: '#94a3b8', textAlign: 'center', flexShrink: 0 },
     // 팝업 스타일
     overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
     popup: { background: '#fff', borderRadius: 16, padding: '24px 20px', maxWidth: 540, width: '95vw', maxHeight: '85vh', overflowY: 'auto', position: 'relative' },
@@ -520,28 +521,30 @@ export default function VitalCheck() {
                           </td>
                           {['sys', 'dia', 'hr', 'bt'].map(field => (
                             <td key={field} style={S.td}>
-                              <input type="text" inputMode="decimal" style={S.vInput}
-                                value={getVal(p.chartNo, session, field)}
-                                onChange={e => updateVital(p.chartNo, field, e.target.value)}
-                                placeholder="-" />
-                              <div style={S.prevVal}>{prev?.[field] != null ? prev[field] : '\u00A0'}</div>
+                              <div style={S.vCell}>
+                                <input type="text" inputMode="decimal" style={S.vInput}
+                                  value={getVal(p.chartNo, session, field)}
+                                  onChange={e => updateVital(p.chartNo, field, e.target.value)}
+                                  placeholder="-" />
+                                <div style={S.prevVal}>{prev?.[field] != null ? prev[field] : '\u00A0'}</div>
+                              </div>
                             </td>
                           ))}
                           {['fbs', 'pp2'].map(field => (
                             <td key={field} style={S.td}>
                               {dm ? (
-                                <>
+                                <div style={S.vCell}>
                                   <input type="text" inputMode="decimal" style={{ ...S.vInput, background: '#fffbeb' }}
                                     value={getVal(p.chartNo, session, field)}
                                     onChange={e => updateVital(p.chartNo, field, e.target.value)}
                                     placeholder="-" />
                                   <div style={S.prevVal}>{prev?.[field] != null ? prev[field] : '\u00A0'}</div>
-                                </>
+                                </div>
                               ) : (
-                                <>
-                                  <span style={{ color: '#e2e8f0' }}>-</span>
+                                <div style={S.vCell}>
+                                  <div style={{ ...S.vInput, border: 'none', color: '#e2e8f0' }}>-</div>
                                   <div style={S.prevVal}>{'\u00A0'}</div>
-                                </>
+                                </div>
                               )}
                             </td>
                           ))}
