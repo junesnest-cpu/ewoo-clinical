@@ -152,6 +152,7 @@ export default function VitalCheck() {
   const userId = userName || '';
   const [patients, setPatients] = useState([]);
   const [vitals, setVitals] = useState({});
+  const [yesterdayVitals, setYesterdayVitals] = useState({});
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(currentSession);
   const [activeBadges, setActiveBadges] = useState(new Set());
@@ -170,15 +171,32 @@ export default function VitalCheck() {
   const now = new Date();
   const dateDisplay = `${now.getFullYear()}. ${now.getMonth() + 1}. ${now.getDate()} (${DAY_NAMES[now.getDay()]})`;
   const sessionLabel = session === 'am' ? '오전 (09:00)' : '오후 (16:00)';
-  const otherSession = session === 'am' ? 'pm' : 'am';
 
-  // 환자 목록 + 바이탈 데이터 조회
+  // 전날 날짜 계산
+  const yesterday = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }, []);
+
+  // 직전 바이탈 조회: PM→오늘AM→어제PM→어제AM, AM→어제PM→어제AM
+  const getPrev = useCallback((chartNo) => {
+    const today = vitals[chartNo];
+    const yday = yesterdayVitals[chartNo];
+    if (session === 'pm') {
+      return today?.am || yday?.pm || yday?.am || null;
+    }
+    // AM: 어제 PM → 어제 AM
+    return yday?.pm || yday?.am || null;
+  }, [vitals, yesterdayVitals, session]);
+
+  // 환자 목록 + 오늘/어제 바이탈 조회
   useEffect(() => {
     (async () => {
       try {
-        const [patRes, vitRes] = await Promise.all([
+        const [patRes, vitRes, ydayRes] = await Promise.all([
           fetch(`/api/rounding?date=${dateKey}`),
           fetch(`/api/vitals?date=${dateKey}`),
+          fetch(`/api/vitals?date=${yesterday}`),
         ]);
         if (patRes.ok) {
           const d = await patRes.json();
@@ -188,10 +206,14 @@ export default function VitalCheck() {
           const d = await vitRes.json();
           setVitals(d.vitals || {});
         }
+        if (ydayRes.ok) {
+          const d = await ydayRes.json();
+          setYesterdayVitals(d.vitals || {});
+        }
       } catch (e) { console.error(e); }
       setLoading(false);
     })();
-  }, [dateKey]);
+  }, [dateKey, yesterday]);
 
   // 바이탈 저장 (디바운스 1초)
   const saveVital = useCallback((chartNo, field, value) => {
@@ -398,8 +420,10 @@ export default function VitalCheck() {
     name: { fontWeight: 700, fontSize: 14, color: '#0f172a', cursor: 'pointer', whiteSpace: 'nowrap' },
     badge: { display: 'inline-block', padding: '1px 5px', borderRadius: 8, fontSize: 9, fontWeight: 600, whiteSpace: 'nowrap', lineHeight: '16px' },
     vInput: { width: '100%', border: '1px solid #e2e8f0', borderRadius: 5, padding: '4px 2px', fontSize: 14, textAlign: 'center', outline: 'none', fontFamily: 'inherit', fontWeight: 600 },
-    prevSummary: { fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '16px' },
+    prevSummary: { fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', lineHeight: '16px' },
     prevTime: { fontSize: 10, color: '#94a3b8', lineHeight: '14px' },
+    dmCell: { display: 'flex', alignItems: 'center', gap: 3 },
+    dmPrev: { fontSize: 11, color: '#94a3b8', flexShrink: 0, minWidth: 20, textAlign: 'center' },
     // 팝업 스타일
     overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
     popup: { background: '#fff', borderRadius: 16, padding: '24px 20px', maxWidth: 540, width: '95vw', maxHeight: '85vh', overflowY: 'auto', position: 'relative' },
@@ -463,16 +487,16 @@ export default function VitalCheck() {
           </div>
           <table style={S.table}>
             <colgroup>
-              <col style={{ width: 52 }} />
-              <col style={{ width: 56 }} />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 52 }} />
-              <col style={{ width: 52 }} />
-              <col style={{ width: 46 }} />
-              <col style={{ width: 46 }} />
-              <col style={{ width: 46 }} />
-              <col style={{ width: 46 }} />
-              <col />
+              <col style={{ width: '5%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '13%' }} />
             </colgroup>
             <thead>
               <tr>
@@ -483,9 +507,9 @@ export default function VitalCheck() {
                 <th style={S.th}>이완기</th>
                 <th style={S.th}>심박</th>
                 <th style={S.th}>체온</th>
+                <th style={{ ...S.th, textAlign: 'left', paddingLeft: 8, color: '#94a3b8' }}>직전</th>
                 <th style={{ ...S.th, background: '#fef9c3', color: '#92400e' }}>FBS</th>
                 <th style={{ ...S.th, background: '#fef9c3', color: '#92400e' }}>PP2</th>
-                <th style={{ ...S.th, textAlign: 'left', paddingLeft: 8, color: '#94a3b8' }}>직전</th>
               </tr>
             </thead>
             <tbody>
@@ -506,12 +530,9 @@ export default function VitalCheck() {
                           }
                         : undefined;
                       const dm = isDM(p);
-                      const prev = vitals[p.chartNo]?.[otherSession];
+                      const prev = getPrev(p.chartNo);
                       const prevParts = prev ? [prev.sys, prev.dia, prev.hr, prev.bt].filter(v => v != null) : [];
-                      const prevDmParts = (prev && dm) ? [prev.fbs, prev.pp2].filter(v => v != null) : [];
-                      const prevText = prevParts.length > 0
-                        ? prevParts.join('-') + (prevDmParts.length ? ' / ' + prevDmParts.join('-') : '')
-                        : '';
+                      const prevText = prevParts.length > 0 ? prevParts.join('-') : '';
                       const prevTime = prev?.at
                         ? new Date(prev.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
                         : '';
@@ -536,18 +557,6 @@ export default function VitalCheck() {
                                 placeholder="-" />
                             </td>
                           ))}
-                          {['fbs', 'pp2'].map(field => (
-                            <td key={field} style={S.td}>
-                              {dm ? (
-                                <input type="text" inputMode="decimal" style={{ ...S.vInput, background: '#fffbeb' }}
-                                  value={getVal(p.chartNo, session, field)}
-                                  onChange={e => updateVital(p.chartNo, field, e.target.value)}
-                                  placeholder="-" />
-                              ) : (
-                                <span style={{ color: '#e2e8f0' }}>-</span>
-                              )}
-                            </td>
-                          ))}
                           <td style={{ ...S.td, textAlign: 'left', paddingLeft: 8 }}>
                             {prevText ? (
                               <>
@@ -558,6 +567,21 @@ export default function VitalCheck() {
                               <div style={S.prevSummary}>{'\u00A0'}</div>
                             )}
                           </td>
+                          {['fbs', 'pp2'].map(field => (
+                            <td key={field} style={S.td}>
+                              {dm ? (
+                                <div style={S.dmCell}>
+                                  <input type="text" inputMode="decimal" style={{ ...S.vInput, background: '#fffbeb' }}
+                                    value={getVal(p.chartNo, session, field)}
+                                    onChange={e => updateVital(p.chartNo, field, e.target.value)}
+                                    placeholder="-" />
+                                  <span style={S.dmPrev}>{prev?.[field] != null ? prev[field] : ''}</span>
+                                </div>
+                              ) : (
+                                <span style={{ color: '#e2e8f0' }}>-</span>
+                              )}
+                            </td>
+                          ))}
                         </tr>
                       );
                     })}
