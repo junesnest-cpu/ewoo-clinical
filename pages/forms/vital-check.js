@@ -48,23 +48,32 @@ function koreanToNum(str) {
   return result || NaN;
 }
 
-// 음성 텍스트에서 숫자 추출
+// 음성 텍스트에서 숫자 추출 (아라비아 + 한국어 숫자)
 function extractNumbers(text) {
   const nums = [];
+  // 한국어 숫자 단어를 아라비아로 변환
+  let converted = text
+    .replace(/점/g, '.')
+    .replace(/백/g, '00').replace(/십/g, '0')
+    .replace(/하나|한/g, '1').replace(/둘|두/g, '2').replace(/셋|세/g, '3')
+    .replace(/넷|네/g, '4').replace(/다섯/g, '5').replace(/여섯/g, '6')
+    .replace(/일곱/g, '7').replace(/여덟/g, '8').replace(/아홉/g, '9')
+    .replace(/영|공/g, '0');
   // 아라비아 숫자 매칭 (소수점 포함)
-  const matches = text.match(/[\d]+[.]?[\d]*/g);
-  if (matches) matches.forEach(m => nums.push(parseFloat(m)));
+  const matches = converted.match(/[\d]+\.?[\d]*/g);
+  if (matches) matches.forEach(m => { const n = parseFloat(m); if (!isNaN(n)) nums.push(n); });
   return nums;
 }
 
-// 음성 텍스트에서 환자 이름 매칭
+// 음성 텍스트에서 환자 이름 매칭 (공백 무시, 부분 매칭)
 function matchPatient(text, patients) {
-  let best = null, bestIdx = -1;
+  const clean = text.replace(/\s/g, '');
+  let best = null, bestLen = 0;
   for (const p of patients) {
-    const idx = text.indexOf(p.name);
-    if (idx !== -1 && (bestIdx === -1 || idx < bestIdx)) {
+    const name = p.name.replace(/\s/g, '');
+    if (clean.includes(name) && name.length > bestLen) {
       best = p;
-      bestIdx = idx;
+      bestLen = name.length;
     }
   }
   return best;
@@ -216,19 +225,23 @@ export default function VitalCheck() {
 
     recognition.onstart = () => { setListening(true); setVoiceStatus('듣는 중...'); setVoiceText(''); };
     recognition.onresult = (e) => {
-      const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+      // 모든 결과를 합치되, 마지막 result의 isFinal 확인
+      const results = Array.from(e.results);
+      const transcript = results.map(r => r[0].transcript).join('');
       setVoiceText(transcript);
-      if (e.results[0].isFinal) {
-        // 파싱 시도
+      const lastResult = results[results.length - 1];
+      if (lastResult.isFinal) {
+        const finalText = lastResult[0].transcript;
+        // 전체 텍스트에서 파싱 시도
         const patient = matchPatient(transcript, patients);
         const nums = extractNumbers(transcript);
         if (patient && nums.length >= 4) {
           setPatientVitals(patient.chartNo, nums);
           setVoiceStatus(`${patient.name}: BP ${nums[0]}/${nums[1]}, HR ${nums[2]}, BT ${nums[3]}${nums[4] != null ? `, FBS ${nums[4]}` : ''}${nums[5] != null ? `, PP2 ${nums[5]}` : ''}`);
         } else if (!patient) {
-          setVoiceStatus('환자를 찾지 못했습니다. 이름을 정확히 말씀해주세요.');
+          setVoiceStatus(`인식: "${transcript}" — 환자를 찾지 못했습니다`);
         } else {
-          setVoiceStatus(`숫자가 부족합니다 (${nums.length}/4). 혈압·심박·체온을 말씀해주세요.`);
+          setVoiceStatus(`인식: "${transcript}" — 숫자 ${nums.length}개 (${nums.join(', ')}) / 최소 4개 필요`);
         }
       }
     };
