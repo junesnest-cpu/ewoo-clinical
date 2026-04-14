@@ -107,7 +107,7 @@ export default function VitalCheck() {
   const [vitals, setVitals] = useState({});
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(currentSession);
-  const [activeBadge, setActiveBadge] = useState(null);
+  const [activeBadges, setActiveBadges] = useState(new Set());
   const [listening, setListening] = useState(false);
   const [voiceText, setVoiceText] = useState('');
   const [voiceStatus, setVoiceStatus] = useState('');
@@ -331,144 +331,146 @@ export default function VitalCheck() {
       <div style={S.badgeBar}>
         <span style={S.badgeBarLabel}>주석:</span>
         {BADGES.map(b => (
-          <span key={b.id} style={S.badgeFilter(b, activeBadge === b.id)}
-            onClick={() => setActiveBadge(prev => prev === b.id ? null : b.id)}>
+          <span key={b.id} style={S.badgeFilter(b, activeBadges.has(b.id))}
+            onClick={() => setActiveBadges(prev => {
+              const next = new Set(prev);
+              next.has(b.id) ? next.delete(b.id) : next.add(b.id);
+              return next;
+            })}>
             {b.label}
           </span>
         ))}
-        {activeBadge && (
+        {activeBadges.size > 0 && (
           <span style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer', marginLeft: 4 }}
-            onClick={() => setActiveBadge(null)}>✕ 해제</span>
+            onClick={() => setActiveBadges(new Set())}>✕ 전체해제</span>
         )}
       </div>
 
       {/* 병동별 테이블 */}
-      {Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(floor => {
-        const hasDMPatient = Object.values(grouped[floor]).flat().some(p => isDM(p));
-        return (
-          <div key={floor}>
-            <div style={S.floorHeader}>
-              {FLOOR_LABELS[floor] || `${floor}층`}
-              <span style={S.count}>{floorCount(floor)}명</span>
-            </div>
-            <table style={S.table}>
-              <colgroup>
-                <col style={{ width: 56 }} />
-                <col style={{ width: 120 }} />
-                <col style={{ width: 62 }} />
-                <col style={{ width: 62 }} />
-                <col style={{ width: 56 }} />
-                <col style={{ width: 56 }} />
-                {hasDMPatient && <col style={{ width: 56 }} />}
-                {hasDMPatient && <col style={{ width: 56 }} />}
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={S.th}>병실</th>
-                  <th style={{ ...S.th, textAlign: 'left', paddingLeft: 10 }}>이름</th>
-                  <th style={S.th}>수축기</th>
-                  <th style={S.th}>이완기</th>
-                  <th style={S.th}>심박</th>
-                  <th style={S.th}>체온</th>
-                  {hasDMPatient && <th style={{ ...S.th, background: '#fef9c3', color: '#92400e' }}>FBS</th>}
-                  {hasDMPatient && <th style={{ ...S.th, background: '#fef9c3', color: '#92400e' }}>PP2</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {Object.keys(grouped[floor]).sort().map((roomLabel, ri) => {
-                  const roomPts = grouped[floor][roomLabel];
-                  return (
-                    <React.Fragment key={roomLabel}>
-                      {ri > 0 && <tr><td colSpan={hasDMPatient ? 8 : 6} style={S.roomGap}></td></tr>}
-                      {roomPts.map(p => {
-                        const badges = getBadges(p.memo);
-                        const matchedBadge = activeBadge ? badges.find(b => b.id === activeBadge) : null;
-                        const rowBg = matchedBadge
-                          ? { background: matchedBadge.bg, boxShadow: `inset 3px 0 0 ${matchedBadge.color}` }
-                          : undefined;
-                        const dm = isDM(p);
-                        const prev = vitals[p.chartNo]?.[otherSession];
-                        return (
-                          <tr key={p.chartNo} style={rowBg}>
-                            <td style={{ ...S.td, fontSize: 12, color: '#475569', fontWeight: 600 }}>{p.roomLabel}-{p.bed}</td>
-                            <td style={{ ...S.td, textAlign: 'left', paddingLeft: 10 }}>
-                              <span style={S.name} onClick={() => openHistory(p)}>{p.name}</span>
-                              <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', marginTop: 2 }}>
-                                {badges.map(b => (
-                                  <span key={b.id} style={{ ...S.badge, color: b.color, background: b.bg }}>{b.label}</span>
-                                ))}
-                              </div>
-                            </td>
-                            {/* 수축기 */}
-                            <td style={S.td}>
-                              <input type="number" style={S.vInput}
-                                value={getVal(p.chartNo, session, 'sys')}
-                                onChange={e => updateVital(p.chartNo, 'sys', e.target.value)}
-                                placeholder="-" />
-                              {prev?.sys != null && <div style={S.prevVal}>{prev.sys}</div>}
-                            </td>
-                            {/* 이완기 */}
-                            <td style={S.td}>
-                              <input type="number" style={S.vInput}
-                                value={getVal(p.chartNo, session, 'dia')}
-                                onChange={e => updateVital(p.chartNo, 'dia', e.target.value)}
-                                placeholder="-" />
-                              {prev?.dia != null && <div style={S.prevVal}>{prev.dia}</div>}
-                            </td>
-                            {/* 심박 */}
-                            <td style={S.td}>
-                              <input type="number" style={S.vInput}
-                                value={getVal(p.chartNo, session, 'hr')}
-                                onChange={e => updateVital(p.chartNo, 'hr', e.target.value)}
-                                placeholder="-" />
-                              {prev?.hr != null && <div style={S.prevVal}>{prev.hr}</div>}
-                            </td>
-                            {/* 체온 */}
-                            <td style={S.td}>
-                              <input type="number" step="0.1" style={S.vInput}
-                                value={getVal(p.chartNo, session, 'bt')}
-                                onChange={e => updateVital(p.chartNo, 'bt', e.target.value)}
-                                placeholder="-" />
-                              {prev?.bt != null && <div style={S.prevVal}>{prev.bt}</div>}
-                            </td>
-                            {/* FBS / PP2 — 당뇨 환자만 */}
-                            {hasDMPatient && (
-                              <td style={S.td}>
-                                {dm ? (
-                                  <>
-                                    <input type="number" style={{ ...S.vInput, background: '#fffbeb' }}
-                                      value={getVal(p.chartNo, session, 'fbs')}
-                                      onChange={e => updateVital(p.chartNo, 'fbs', e.target.value)}
-                                      placeholder="-" />
-                                    {prev?.fbs != null && <div style={S.prevVal}>{prev.fbs}</div>}
-                                  </>
-                                ) : <span style={{ color: '#e2e8f0' }}>-</span>}
-                              </td>
-                            )}
-                            {hasDMPatient && (
-                              <td style={S.td}>
-                                {dm ? (
-                                  <>
-                                    <input type="number" style={{ ...S.vInput, background: '#fffbeb' }}
-                                      value={getVal(p.chartNo, session, 'pp2')}
-                                      onChange={e => updateVital(p.chartNo, 'pp2', e.target.value)}
-                                      placeholder="-" />
-                                    {prev?.pp2 != null && <div style={S.prevVal}>{prev.pp2}</div>}
-                                  </>
-                                ) : <span style={{ color: '#e2e8f0' }}>-</span>}
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+      {Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(floor => (
+        <div key={floor}>
+          <div style={S.floorHeader}>
+            {FLOOR_LABELS[floor] || `${floor}층`}
+            <span style={S.count}>{floorCount(floor)}명</span>
           </div>
-        );
-      })}
+          <table style={S.table}>
+            <colgroup>
+              <col style={{ width: 52 }} />
+              <col style={{ width: 56 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 52 }} />
+              <col style={{ width: 52 }} />
+              <col style={{ width: 52 }} />
+              <col style={{ width: 52 }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={S.th}>병실</th>
+                <th style={{ ...S.th, textAlign: 'left', paddingLeft: 6 }}>이름</th>
+                <th style={{ ...S.th, textAlign: 'left', paddingLeft: 4 }}>뱃지</th>
+                <th style={S.th}>수축기</th>
+                <th style={S.th}>이완기</th>
+                <th style={S.th}>심박</th>
+                <th style={S.th}>체온</th>
+                <th style={{ ...S.th, background: '#fef9c3', color: '#92400e' }}>FBS</th>
+                <th style={{ ...S.th, background: '#fef9c3', color: '#92400e' }}>PP2</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.keys(grouped[floor]).sort().map((roomLabel, ri) => {
+                const roomPts = grouped[floor][roomLabel];
+                return (
+                  <React.Fragment key={roomLabel}>
+                    {ri > 0 && <tr><td colSpan={9} style={S.roomGap}></td></tr>}
+                    {roomPts.map(p => {
+                      const badges = getBadges(p.memo);
+                      // 복수 뱃지 하이라이트: 선택된 뱃지 중 이 환자가 가진 것들
+                      const matched = activeBadges.size > 0
+                        ? badges.filter(b => activeBadges.has(b.id))
+                        : [];
+                      const rowStyle = matched.length > 0
+                        ? {
+                            background: matched[0].bg,
+                            boxShadow: matched.map((b, i) => `inset ${(i + 1) * 3}px 0 0 ${b.color}`).join(', '),
+                          }
+                        : undefined;
+                      const dm = isDM(p);
+                      const prev = vitals[p.chartNo]?.[otherSession];
+                      return (
+                        <tr key={p.chartNo} style={rowStyle}>
+                          <td style={{ ...S.td, fontSize: 12, color: '#475569', fontWeight: 600 }}>{p.roomLabel}-{p.bed}</td>
+                          <td style={{ ...S.td, textAlign: 'left', paddingLeft: 6 }}>
+                            <span style={S.name} onClick={() => openHistory(p)}>{p.name}</span>
+                          </td>
+                          <td style={{ ...S.td, textAlign: 'left', paddingLeft: 4 }}>
+                            <div style={{ display: 'flex', gap: 2, flexWrap: 'nowrap', minHeight: 18 }}>
+                              {badges.map(b => (
+                                <span key={b.id} style={{ ...S.badge, color: b.color, background: b.bg }}>{b.label}</span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={S.td}>
+                            <input type="number" style={S.vInput}
+                              value={getVal(p.chartNo, session, 'sys')}
+                              onChange={e => updateVital(p.chartNo, 'sys', e.target.value)}
+                              placeholder="-" />
+                            {prev?.sys != null && <div style={S.prevVal}>{prev.sys}</div>}
+                          </td>
+                          <td style={S.td}>
+                            <input type="number" style={S.vInput}
+                              value={getVal(p.chartNo, session, 'dia')}
+                              onChange={e => updateVital(p.chartNo, 'dia', e.target.value)}
+                              placeholder="-" />
+                            {prev?.dia != null && <div style={S.prevVal}>{prev.dia}</div>}
+                          </td>
+                          <td style={S.td}>
+                            <input type="number" style={S.vInput}
+                              value={getVal(p.chartNo, session, 'hr')}
+                              onChange={e => updateVital(p.chartNo, 'hr', e.target.value)}
+                              placeholder="-" />
+                            {prev?.hr != null && <div style={S.prevVal}>{prev.hr}</div>}
+                          </td>
+                          <td style={S.td}>
+                            <input type="number" step="0.1" style={S.vInput}
+                              value={getVal(p.chartNo, session, 'bt')}
+                              onChange={e => updateVital(p.chartNo, 'bt', e.target.value)}
+                              placeholder="-" />
+                            {prev?.bt != null && <div style={S.prevVal}>{prev.bt}</div>}
+                          </td>
+                          <td style={S.td}>
+                            {dm ? (
+                              <>
+                                <input type="number" style={{ ...S.vInput, background: '#fffbeb' }}
+                                  value={getVal(p.chartNo, session, 'fbs')}
+                                  onChange={e => updateVital(p.chartNo, 'fbs', e.target.value)}
+                                  placeholder="-" />
+                                {prev?.fbs != null && <div style={S.prevVal}>{prev.fbs}</div>}
+                              </>
+                            ) : <span style={{ color: '#e2e8f0' }}>-</span>}
+                          </td>
+                          <td style={S.td}>
+                            {dm ? (
+                              <>
+                                <input type="number" style={{ ...S.vInput, background: '#fffbeb' }}
+                                  value={getVal(p.chartNo, session, 'pp2')}
+                                  onChange={e => updateVital(p.chartNo, 'pp2', e.target.value)}
+                                  placeholder="-" />
+                                {prev?.pp2 != null && <div style={S.prevVal}>{prev.pp2}</div>}
+                              </>
+                            ) : <span style={{ color: '#e2e8f0' }}>-</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
 
       <div style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: 13 }}>
         총 {patients.length}명 · {sessionLabel} · {userId || '미로그인'}
