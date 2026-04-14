@@ -125,6 +125,8 @@ export default function VitalCheck() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const saveTimers = useRef({});
   const recognitionRef = useRef(null);
+  const voiceBuffer = useRef('');
+  const parseTimer = useRef(null);
 
   const dateKey = todayStr();
   const now = new Date();
@@ -208,47 +210,89 @@ export default function VitalCheck() {
     })();
   }, [dateKey, session, vitals, userId]);
 
-  // 음성 인식
+  // 음성 버퍼 파싱 시도
+  const tryParse = useCallback((text) => {
+    const patient = matchPatient(text, patients);
+    const nums = extractNumbers(text);
+    if (patient && nums.length >= 4) {
+      setPatientVitals(patient.chartNo, nums);
+      setVoiceStatus(`${patient.name}: BP ${nums[0]}/${nums[1]}, HR ${nums[2]}, BT ${nums[3]}${nums[4] != null ? `, FBS ${nums[4]}` : ''}${nums[5] != null ? `, PP2 ${nums[5]}` : ''}`);
+      voiceBuffer.current = '';
+      setVoiceText('');
+      return true;
+    }
+    if (!patient) {
+      setVoiceStatus(`인식: "${text}" — 환자를 찾지 못했습니다`);
+    } else {
+      setVoiceStatus(`인식: "${text}" — 숫자 ${nums.length}개 (${nums.join(', ')}) / 최소 4개 필요`);
+    }
+    return false;
+  }, [patients, setPatientVitals]);
+
+  // 음성 인식 (연속 모드 + 자동 재시작)
   const toggleVoice = useCallback(() => {
     if (listening) {
-      recognitionRef.current?.stop();
+      if (recognitionRef.current) { recognitionRef.current._stopped = true; recognitionRef.current.stop(); }
+      if (parseTimer.current) clearTimeout(parseTimer.current);
+      // 남은 버퍼 최종 파싱
+      if (voiceBuffer.current.trim()) tryParse(voiceBuffer.current);
+      voiceBuffer.current = '';
       setListening(false);
       return;
     }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setVoiceStatus('이 브라우저는 음성인식을 지원하지 않습니다'); return; }
-    const recognition = new SR();
-    recognition.lang = 'ko-KR';
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognitionRef.current = recognition;
 
-    recognition.onstart = () => { setListening(true); setVoiceStatus('듣는 중...'); setVoiceText(''); };
-    recognition.onresult = (e) => {
-      // 모든 결과를 합치되, 마지막 result의 isFinal 확인
-      const results = Array.from(e.results);
-      const transcript = results.map(r => r[0].transcript).join('');
-      setVoiceText(transcript);
-      const lastResult = results[results.length - 1];
-      if (lastResult.isFinal) {
-        const finalText = lastResult[0].transcript;
-        // 전체 텍스트에서 파싱 시도
-        const patient = matchPatient(transcript, patients);
-        const nums = extractNumbers(transcript);
-        if (patient && nums.length >= 4) {
-          setPatientVitals(patient.chartNo, nums);
-          setVoiceStatus(`${patient.name}: BP ${nums[0]}/${nums[1]}, HR ${nums[2]}, BT ${nums[3]}${nums[4] != null ? `, FBS ${nums[4]}` : ''}${nums[5] != null ? `, PP2 ${nums[5]}` : ''}`);
-        } else if (!patient) {
-          setVoiceStatus(`인식: "${transcript}" — 환자를 찾지 못했습니다`);
-        } else {
-          setVoiceStatus(`인식: "${transcript}" — 숫자 ${nums.length}개 (${nums.join(', ')}) / 최소 4개 필요`);
+    function startRecognition() {
+      const recognition = new SR();
+      recognition.lang = 'ko-KR';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition._stopped = false;
+      recognitionRef.current = recognition;
+
+      recognition.onstart = () => { setListening(true); if (!voiceBuffer.current) setVoiceStatus('듣는 중... 천천히 말씀하세요'); };
+      recognition.onresult = (e) => {
+        // 현재 인식 중인 전체 텍스트 조합
+        let interim = '', final = '';
+        for (let i = 0; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) { final += t + ' '; } else { interim += t; }
         }
-      }
-    };
-    recognition.onerror = (e) => { setVoiceStatus(`오류: ${e.error}`); setListening(false); };
-    recognition.onend = () => { setListening(false); };
-    recognition.start();
-  }, [listening, patients, setPatientVitals]);
+        const accumulated = voiceBuffer.current + final;
+        setVoiceText((accumulated + interim).trim());
+
+        if (final) {
+          voiceBuffer.current = accumulated;
+          // 파싱 디바운스: final 결과가 올 때마다 2.5초 타이머 리셋
+          if (parseTimer.current) clearTimeout(parseTimer.current);
+          parseTimer.current = setTimeout(() => {
+            const buf = voiceBuffer.current.trim();
+            if (buf) {
+              const ok = tryParse(buf);
+              if (ok) voiceBuffer.current = '';
+            }
+          }, 2500);
+        }
+      };
+      recognition.onerror = (e) => {
+        if (e.error === 'no-speech' || e.error === 'aborted') return; // 무시, 재시작됨
+        setVoiceStatus(`오류: ${e.error}`);
+      };
+      recognition.onend = () => {
+        // 자동 재시작 (사용자가 직접 중지하지 않은 경우)
+        if (!recognition._stopped) {
+          try { startRecognition(); } catch (ex) { setListening(false); }
+        } else {
+          setListening(false);
+        }
+      };
+      recognition.start();
+    }
+
+    voiceBuffer.current = '';
+    startRecognition();
+  }, [listening, tryParse]);
 
   // 환자 바이탈 이력 팝업
   const openHistory = async (patient) => {
