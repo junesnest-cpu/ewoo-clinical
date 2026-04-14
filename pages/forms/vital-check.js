@@ -473,7 +473,7 @@ export default function VitalCheck() {
       ))}
 
       <div style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: 13 }}>
-        총 {patients.length}명 · {sessionLabel} · {userId || '미로그인'}
+        총 {patients.length}명 · {sessionLabel}
       </div>
 
       {/* 바이탈 이력 팝업 */}
