@@ -397,9 +397,9 @@ export default function VitalCheck() {
     roomGap: { height: 15, background: '#f8fafc' },
     name: { fontWeight: 700, fontSize: 14, color: '#0f172a', cursor: 'pointer', whiteSpace: 'nowrap' },
     badge: { display: 'inline-block', padding: '1px 5px', borderRadius: 8, fontSize: 9, fontWeight: 600, whiteSpace: 'nowrap', lineHeight: '16px' },
-    vCell: { display: 'flex', alignItems: 'center', gap: 2 },
-    vInput: { width: '60%', border: '1px solid #e2e8f0', borderRadius: 5, padding: '4px 2px', fontSize: 14, textAlign: 'center', outline: 'none', fontFamily: 'inherit', fontWeight: 600, flexShrink: 0 },
-    prevVal: { width: '40%', fontSize: 10, color: '#94a3b8', textAlign: 'center', flexShrink: 0 },
+    vInput: { width: '100%', border: '1px solid #e2e8f0', borderRadius: 5, padding: '4px 2px', fontSize: 14, textAlign: 'center', outline: 'none', fontFamily: 'inherit', fontWeight: 600 },
+    prevSummary: { fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: '16px' },
+    prevTime: { fontSize: 10, color: '#94a3b8', lineHeight: '14px' },
     // 팝업 스타일
     overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
     popup: { background: '#fff', borderRadius: 16, padding: '24px 20px', maxWidth: 540, width: '95vw', maxHeight: '85vh', overflowY: 'auto', position: 'relative' },
@@ -465,13 +465,14 @@ export default function VitalCheck() {
             <colgroup>
               <col style={{ width: 52 }} />
               <col style={{ width: 56 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 60 }} />
-              <col style={{ width: 60 }} />
+              <col style={{ width: 100 }} />
               <col style={{ width: 52 }} />
               <col style={{ width: 52 }} />
-              <col style={{ width: 52 }} />
-              <col style={{ width: 52 }} />
+              <col style={{ width: 46 }} />
+              <col style={{ width: 46 }} />
+              <col style={{ width: 46 }} />
+              <col style={{ width: 46 }} />
+              <col />
             </colgroup>
             <thead>
               <tr>
@@ -484,6 +485,7 @@ export default function VitalCheck() {
                 <th style={S.th}>체온</th>
                 <th style={{ ...S.th, background: '#fef9c3', color: '#92400e' }}>FBS</th>
                 <th style={{ ...S.th, background: '#fef9c3', color: '#92400e' }}>PP2</th>
+                <th style={{ ...S.th, textAlign: 'left', paddingLeft: 8, color: '#94a3b8' }}>직전</th>
               </tr>
             </thead>
             <tbody>
@@ -491,10 +493,9 @@ export default function VitalCheck() {
                 const roomPts = grouped[floor][roomLabel];
                 return (
                   <React.Fragment key={roomLabel}>
-                    {ri > 0 && <tr><td colSpan={9} style={S.roomGap}></td></tr>}
+                    {ri > 0 && <tr><td colSpan={10} style={S.roomGap}></td></tr>}
                     {roomPts.map(p => {
                       const badges = getBadges(p.memo);
-                      // 복수 뱃지 하이라이트: 선택된 뱃지 중 이 환자가 가진 것들
                       const matched = activeBadges.size > 0
                         ? badges.filter(b => activeBadges.has(b.id))
                         : [];
@@ -506,6 +507,14 @@ export default function VitalCheck() {
                         : undefined;
                       const dm = isDM(p);
                       const prev = vitals[p.chartNo]?.[otherSession];
+                      const prevParts = prev ? [prev.sys, prev.dia, prev.hr, prev.bt].filter(v => v != null) : [];
+                      const prevDmParts = (prev && dm) ? [prev.fbs, prev.pp2].filter(v => v != null) : [];
+                      const prevText = prevParts.length > 0
+                        ? prevParts.join('-') + (prevDmParts.length ? ' / ' + prevDmParts.join('-') : '')
+                        : '';
+                      const prevTime = prev?.at
+                        ? new Date(prev.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+                        : '';
                       return (
                         <tr key={p.chartNo} style={rowStyle}>
                           <td style={{ ...S.td, fontSize: 12, color: '#475569', fontWeight: 600 }}>{p.roomLabel}-{p.bed}</td>
@@ -521,33 +530,34 @@ export default function VitalCheck() {
                           </td>
                           {['sys', 'dia', 'hr', 'bt'].map(field => (
                             <td key={field} style={S.td}>
-                              <div style={S.vCell}>
-                                <input type="text" inputMode="decimal" style={S.vInput}
-                                  value={getVal(p.chartNo, session, field)}
-                                  onChange={e => updateVital(p.chartNo, field, e.target.value)}
-                                  placeholder="-" />
-                                <div style={S.prevVal}>{prev?.[field] != null ? prev[field] : '\u00A0'}</div>
-                              </div>
+                              <input type="text" inputMode="decimal" style={S.vInput}
+                                value={getVal(p.chartNo, session, field)}
+                                onChange={e => updateVital(p.chartNo, field, e.target.value)}
+                                placeholder="-" />
                             </td>
                           ))}
                           {['fbs', 'pp2'].map(field => (
                             <td key={field} style={S.td}>
                               {dm ? (
-                                <div style={S.vCell}>
-                                  <input type="text" inputMode="decimal" style={{ ...S.vInput, background: '#fffbeb' }}
-                                    value={getVal(p.chartNo, session, field)}
-                                    onChange={e => updateVital(p.chartNo, field, e.target.value)}
-                                    placeholder="-" />
-                                  <div style={S.prevVal}>{prev?.[field] != null ? prev[field] : '\u00A0'}</div>
-                                </div>
+                                <input type="text" inputMode="decimal" style={{ ...S.vInput, background: '#fffbeb' }}
+                                  value={getVal(p.chartNo, session, field)}
+                                  onChange={e => updateVital(p.chartNo, field, e.target.value)}
+                                  placeholder="-" />
                               ) : (
-                                <div style={S.vCell}>
-                                  <div style={{ ...S.vInput, border: 'none', color: '#e2e8f0' }}>-</div>
-                                  <div style={S.prevVal}>{'\u00A0'}</div>
-                                </div>
+                                <span style={{ color: '#e2e8f0' }}>-</span>
                               )}
                             </td>
                           ))}
+                          <td style={{ ...S.td, textAlign: 'left', paddingLeft: 8 }}>
+                            {prevText ? (
+                              <>
+                                <div style={S.prevSummary}>{prevText}</div>
+                                {prevTime && <div style={S.prevTime}>{prevTime}</div>}
+                              </>
+                            ) : (
+                              <div style={S.prevSummary}>{'\u00A0'}</div>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
