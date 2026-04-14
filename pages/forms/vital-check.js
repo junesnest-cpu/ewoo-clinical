@@ -398,7 +398,7 @@ export default function VitalCheck() {
     name: { fontWeight: 700, fontSize: 14, color: '#0f172a', cursor: 'pointer', whiteSpace: 'nowrap' },
     badge: { display: 'inline-block', padding: '1px 5px', borderRadius: 8, fontSize: 9, fontWeight: 600, whiteSpace: 'nowrap', lineHeight: '16px' },
     vInput: { width: '100%', border: '1px solid #e2e8f0', borderRadius: 5, padding: '4px 2px', fontSize: 14, textAlign: 'center', outline: 'none', fontFamily: 'inherit', fontWeight: 600 },
-    prevVal: { fontSize: 10, color: '#94a3b8', lineHeight: '14px', marginTop: 1 },
+    prevVal: { fontSize: 10, color: '#94a3b8', lineHeight: '14px', height: 14, textAlign: 'center' },
     // 팝업 스타일
     overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
     popup: { background: '#fff', borderRadius: 16, padding: '24px 20px', maxWidth: 540, width: '95vw', maxHeight: '85vh', overflowY: 'auto', position: 'relative' },
@@ -518,56 +518,33 @@ export default function VitalCheck() {
                               ))}
                             </div>
                           </td>
-                          <td style={S.td}>
-                            <input type="number" style={S.vInput}
-                              value={getVal(p.chartNo, session, 'sys')}
-                              onChange={e => updateVital(p.chartNo, 'sys', e.target.value)}
-                              placeholder="-" />
-                            {prev?.sys != null && <div style={S.prevVal}>{prev.sys}</div>}
-                          </td>
-                          <td style={S.td}>
-                            <input type="number" style={S.vInput}
-                              value={getVal(p.chartNo, session, 'dia')}
-                              onChange={e => updateVital(p.chartNo, 'dia', e.target.value)}
-                              placeholder="-" />
-                            {prev?.dia != null && <div style={S.prevVal}>{prev.dia}</div>}
-                          </td>
-                          <td style={S.td}>
-                            <input type="number" style={S.vInput}
-                              value={getVal(p.chartNo, session, 'hr')}
-                              onChange={e => updateVital(p.chartNo, 'hr', e.target.value)}
-                              placeholder="-" />
-                            {prev?.hr != null && <div style={S.prevVal}>{prev.hr}</div>}
-                          </td>
-                          <td style={S.td}>
-                            <input type="number" step="0.1" style={S.vInput}
-                              value={getVal(p.chartNo, session, 'bt')}
-                              onChange={e => updateVital(p.chartNo, 'bt', e.target.value)}
-                              placeholder="-" />
-                            {prev?.bt != null && <div style={S.prevVal}>{prev.bt}</div>}
-                          </td>
-                          <td style={S.td}>
-                            {dm ? (
-                              <>
-                                <input type="number" style={{ ...S.vInput, background: '#fffbeb' }}
-                                  value={getVal(p.chartNo, session, 'fbs')}
-                                  onChange={e => updateVital(p.chartNo, 'fbs', e.target.value)}
-                                  placeholder="-" />
-                                {prev?.fbs != null && <div style={S.prevVal}>{prev.fbs}</div>}
-                              </>
-                            ) : <span style={{ color: '#e2e8f0' }}>-</span>}
-                          </td>
-                          <td style={S.td}>
-                            {dm ? (
-                              <>
-                                <input type="number" style={{ ...S.vInput, background: '#fffbeb' }}
-                                  value={getVal(p.chartNo, session, 'pp2')}
-                                  onChange={e => updateVital(p.chartNo, 'pp2', e.target.value)}
-                                  placeholder="-" />
-                                {prev?.pp2 != null && <div style={S.prevVal}>{prev.pp2}</div>}
-                              </>
-                            ) : <span style={{ color: '#e2e8f0' }}>-</span>}
-                          </td>
+                          {['sys', 'dia', 'hr', 'bt'].map(field => (
+                            <td key={field} style={S.td}>
+                              <input type="text" inputMode="decimal" style={S.vInput}
+                                value={getVal(p.chartNo, session, field)}
+                                onChange={e => updateVital(p.chartNo, field, e.target.value)}
+                                placeholder="-" />
+                              <div style={S.prevVal}>{prev?.[field] != null ? prev[field] : '\u00A0'}</div>
+                            </td>
+                          ))}
+                          {['fbs', 'pp2'].map(field => (
+                            <td key={field} style={S.td}>
+                              {dm ? (
+                                <>
+                                  <input type="text" inputMode="decimal" style={{ ...S.vInput, background: '#fffbeb' }}
+                                    value={getVal(p.chartNo, session, field)}
+                                    onChange={e => updateVital(p.chartNo, field, e.target.value)}
+                                    placeholder="-" />
+                                  <div style={S.prevVal}>{prev?.[field] != null ? prev[field] : '\u00A0'}</div>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ color: '#e2e8f0' }}>-</span>
+                                  <div style={S.prevVal}>{'\u00A0'}</div>
+                                </>
+                              )}
+                            </td>
+                          ))}
                         </tr>
                       );
                     })}
