@@ -30,6 +30,7 @@ export default function NurseRounding() {
   const [notes, setNotes] = useState({});
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState(null);
+  const [activeBadge, setActiveBadge] = useState(null);
   const saveTimers = useRef({});
 
   const dateKey = todayStr();
@@ -112,7 +113,10 @@ export default function NurseRounding() {
 
   const S = {
     container: { maxWidth: 960, margin: '0 auto', padding: '16px 12px' },
-    header: { background: '#0f172a', color: '#fff', padding: '20px 24px', borderRadius: 12, marginBottom: 16, position: 'relative' },
+    header: { background: '#0f172a', color: '#fff', padding: '20px 24px', borderRadius: '12px 12px 0 0', position: 'sticky', top: 0, zIndex: 100 },
+    badgeBar: { background: '#1e293b', padding: '10px 24px', borderRadius: '0 0 12px 12px', marginBottom: 16, position: 'sticky', top: 90, zIndex: 99, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+    badgeFilter: (b, active) => ({ display: 'inline-block', padding: '4px 12px', borderRadius: 14, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: active ? `2px solid ${b.color}` : '2px solid transparent', color: active ? '#fff' : b.color, background: active ? b.color : b.bg, transition: 'all 0.15s', userSelect: 'none' }),
+    badgeBarLabel: { fontSize: 12, color: '#94a3b8', fontWeight: 600, marginRight: 4 },
     date: { fontSize: 22, fontWeight: 800, letterSpacing: 1 },
     title: { fontSize: 14, color: '#94a3b8', marginTop: 4 },
     back: { position: 'absolute', top: 20, right: 24, color: '#94a3b8', fontSize: 14, cursor: 'pointer' },
@@ -120,9 +124,9 @@ export default function NurseRounding() {
     floorHeader: { background: '#1e3a5f', color: '#fff', padding: '10px 16px', borderRadius: '8px 8px 0 0', fontSize: 16, fontWeight: 700, marginTop: 20 },
     count: { fontSize: 13, color: '#94a3b8', marginLeft: 8, fontWeight: 400 },
     table: { width: '100%', borderCollapse: 'collapse', marginBottom: 2, fontSize: 14, tableLayout: 'fixed' },
-    th: { background: '#f1f5f9', padding: '8px 10px', fontWeight: 600, textAlign: 'left', borderBottom: '2px solid #cbd5e1', fontSize: 13, color: '#475569' },
+    th: { background: '#f1f5f9', padding: '8px 10px', fontWeight: 600, textAlign: 'left', borderBottom: '2px solid #cbd5e1', fontSize: 13, color: '#475569', position: 'sticky', top: 130, zIndex: 50 },
     td: { padding: '7px 10px', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle', height: 44, overflow: 'hidden' },
-    roomGap: { height: 6, background: '#f8fafc' },
+    roomGap: { height: 15, background: '#f8fafc' },
     name: { fontWeight: 700, fontSize: 15, color: '#0f172a', whiteSpace: 'nowrap', minWidth: 72, flexShrink: 0 },
     room: { fontSize: 13, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'center' },
     memo: { fontSize: 12, color: '#374151', lineHeight: '18px', height: 36, overflowY: 'auto', overflowX: 'hidden' },
@@ -142,6 +146,26 @@ export default function NurseRounding() {
         <div style={S.title}>간호과 환자 라운딩 체크</div>
         <Link href="/" style={S.back}>← 메인</Link>
         {lastSync && <div style={S.syncInfo}>동기화: {new Date(lastSync).toLocaleString('ko-KR')}</div>}
+      </div>
+      <div style={S.badgeBar}>
+        <span style={S.badgeBarLabel}>주석:</span>
+        {BADGES.map(b => (
+          <span
+            key={b.id}
+            style={S.badgeFilter(b, activeBadge === b.id)}
+            onClick={() => setActiveBadge(prev => prev === b.id ? null : b.id)}
+          >
+            {b.label}
+          </span>
+        ))}
+        {activeBadge && (
+          <span
+            style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer', marginLeft: 4 }}
+            onClick={() => setActiveBadge(null)}
+          >
+            ✕ 해제
+          </span>
+        )}
       </div>
 
       {Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(floor => (
@@ -173,9 +197,12 @@ export default function NurseRounding() {
                     {ri > 0 && <tr><td colSpan={4} style={S.roomGap}></td></tr>}
                     {roomPts.map(p => {
                       const badges = getBadges(p.memo);
-                      const isAlert = badges.some(b => b.id === 'adr');
+                      const matchedBadge = activeBadge ? badges.find(b => b.id === activeBadge) : null;
+                      const rowBg = matchedBadge
+                        ? { background: matchedBadge.bg, boxShadow: `inset 3px 0 0 ${matchedBadge.color}` }
+                        : undefined;
                       return (
-                        <tr key={p.chartNo} style={isAlert ? { background: '#fef2f2' } : undefined}>
+                        <tr key={p.chartNo} style={rowBg}>
                           <td style={{ ...S.td, ...S.room }}>{p.roomLabel}-{p.bed}</td>
                           <td style={S.td}>
                             <div style={S.nameCell}>
