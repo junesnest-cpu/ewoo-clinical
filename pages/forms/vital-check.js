@@ -48,9 +48,41 @@ function koreanToNum(str) {
   return result || NaN;
 }
 
-// 음성 텍스트에서 숫자 추출 (아라비아 + 한국어 숫자)
+// 바이탈 유효 범위
+const VITAL_RANGES = {
+  sys: [60, 260],   // 수축기
+  dia: [30, 160],   // 이완기
+  hr:  [30, 220],   // 심박수
+  bt:  [34, 42],    // 체온
+  fbs: [30, 600],   // 공복혈당
+  pp2: [30, 600],   // 식후혈당
+};
+
+// 큰 숫자를 바이탈 범위에 맞게 분리 시도
+function trySplitNumber(n) {
+  const s = String(Math.round(n));
+  if (s.length < 4) return [n]; // 3자리 이하는 분리 불필요
+
+  // 모든 분리 위치 시도, 두 수가 가장 바이탈 범위에 가까운 조합 선택
+  let bestPair = null, bestScore = Infinity;
+  for (let i = 1; i < s.length; i++) {
+    const a = parseInt(s.slice(0, i)), b = parseInt(s.slice(i));
+    if (b === 0 && s[i] !== '0') continue; // 앞에 0 떨어지는 경우 스킵
+    // sys/dia 쌍으로 점수 계산
+    const inSys = a >= VITAL_RANGES.sys[0] && a <= VITAL_RANGES.sys[1];
+    const inDia = b >= VITAL_RANGES.dia[0] && b <= VITAL_RANGES.dia[1];
+    const score = (inSys ? 0 : Math.min(Math.abs(a - 120), Math.abs(a - 130)))
+                + (inDia ? 0 : Math.min(Math.abs(b - 70), Math.abs(b - 80)));
+    if (inSys && inDia) return [a, b]; // 둘 다 유효하면 즉시 반환
+    if ((inSys || inDia) && score < bestScore) { bestScore = score; bestPair = [a, b]; }
+  }
+  // 하나라도 유효 범위면 분리
+  if (bestPair) return bestPair;
+  return [n];
+}
+
+// 음성 텍스트에서 숫자 추출 (아라비아 + 한국어 + 큰 숫자 분리)
 function extractNumbers(text) {
-  const nums = [];
   // 한국어 숫자 단어를 아라비아로 변환
   let converted = text
     .replace(/점/g, '.')
@@ -59,10 +91,22 @@ function extractNumbers(text) {
     .replace(/넷|네/g, '4').replace(/다섯/g, '5').replace(/여섯/g, '6')
     .replace(/일곱/g, '7').replace(/여덟/g, '8').replace(/아홉/g, '9')
     .replace(/영|공/g, '0');
-  // 아라비아 숫자 매칭 (소수점 포함)
+  // 아라비아 숫자 매칭 (소수점 포함, 한글 뒤의 숫자도 포함)
   const matches = converted.match(/[\d]+\.?[\d]*/g);
-  if (matches) matches.forEach(m => { const n = parseFloat(m); if (!isNaN(n)) nums.push(n); });
-  return nums;
+  if (!matches) return [];
+
+  const raw = matches.map(m => parseFloat(m)).filter(n => !isNaN(n));
+
+  // 큰 숫자 분리 적용
+  const result = [];
+  for (const n of raw) {
+    if (n > 300 && !String(n).includes('.')) {
+      result.push(...trySplitNumber(n));
+    } else {
+      result.push(n);
+    }
+  }
+  return result;
 }
 
 // 음성 텍스트에서 환자 이름 매칭 (공백 무시, 부분 매칭)
@@ -380,7 +424,7 @@ export default function VitalCheck() {
           {listening ? '● 중지' : '🎤 음성입력'}
         </button>
         <span style={S.voiceText}>
-          {voiceText || voiceStatus || '이름 + 수축기 이완기 심박수 체온 순으로 말씀하세요'}
+          {voiceText || voiceStatus || '이름 — 수축기 — 이완기 — 심박수 — 체온 (띄어서 천천히)'}
         </span>
       </div>
 
