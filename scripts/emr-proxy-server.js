@@ -72,9 +72,16 @@ async function getOpinionData(chartNo, admitDate, dischargeDate) {
     if (d && !tMap[code].dates.includes(d)) tMap[code].dates.push(d);
   }
 
-  const memo = await p.request().input('c', chartNo).query(
-    `SELECT chametc_memo AS memo FROM WchamEtc WHERE RTRIM(chametc_cham)=@c`
-  );
+  // 처방메모 (Wmemo) — 입원기간으로 필터
+  const memoReq = p.request().input('c', chartNo);
+  let memoQuery = `SELECT memo_date AS dt, memo_ref AS content, memo_user AS author
+    FROM Wmemo WHERE memo_cham=@c`;
+  if (dateFrom) {
+    memoReq.input('mdf', dateFrom).input('mdt', dateTo);
+    memoQuery += ` AND memo_date >= @mdf AND memo_date <= @mdt`;
+  }
+  memoQuery += ` ORDER BY memo_date DESC`;
+  const memoResult = await memoReq.query(memoQuery);
 
   // 경과기록 — 입원기간으로 필터
   let notes = [];
@@ -119,7 +126,13 @@ async function getOpinionData(chartNo, admitDate, dischargeDate) {
       startDate: (r.startDate || '').trim(),
     })),
     treatments: Object.values(tMap).sort((a, b) => b.count - a.count),
-    memo: (memo.recordset[0]?.memo || '').trim(),
+    prescriptionMemos: memoResult.recordset
+      .filter(r => (r.content || '').trim())
+      .map(r => ({
+        date: (r.dt || '').trim(),
+        content: (r.content || '').trim(),
+        author: (r.author || '').trim(),
+      })),
     progressNotes: notes,
   };
 }

@@ -334,11 +334,21 @@ export default function MedicalOpinion() {
               )}
             </div>
 
-            {/* 환자 메모 */}
-            {opinionData.memo && (
+            {/* 처방메모 */}
+            {opinionData.prescriptionMemos?.length > 0 && (
               <div style={{ ...S.dataCard, gridColumn: '1 / -1' }}>
-                <div style={S.dataCardTitle}>환자 메모</div>
-                <div style={S.memoText}>{opinionData.memo}</div>
+                <div style={S.dataCardTitle}>처방메모 ({opinionData.prescriptionMemos.length}건)</div>
+                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  {opinionData.prescriptionMemos.map((m, i) => (
+                    <div key={i} style={S.noteItem}>
+                      <div style={S.noteHeader}>
+                        <span style={S.noteDate}>{formatDate(m.date)}</span>
+                        {m.author && <span style={S.noteType}>{m.author}</span>}
+                      </div>
+                      <div style={S.noteContent}>{m.content}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
