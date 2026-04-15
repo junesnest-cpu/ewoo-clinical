@@ -1,16 +1,48 @@
 const http = require('http');
 const sql = require('mssql');
 
-const pool = new sql.ConnectionPool({
+const dbOpts = {
   server: '192.168.0.253', port: 1433,
   user: 'sa', password: 'brain!@#$',
-  database: 'BrWonmu',
   options: { encrypt: false, trustServerCertificate: true },
-  pool: { max: 5, idleTimeoutMillis: 30000 }
-});
+  pool: { max: 5, idleTimeoutMillis: 30000 },
+};
+
+const pool = new sql.ConnectionPool({ ...dbOpts, database: 'BrWonmu' });
 const poolReady = pool.connect();
 
+const ocsPool = new sql.ConnectionPool({ ...dbOpts, database: 'BrOcs' });
+const ocsReady = ocsPool.connect();
+
 const API_KEY = 'ewoo-emr-2026';
+
+const SOAP_LABELS = { 0: 'S', 1: 'O', 2: 'A', 3: 'P' };
+
+/** RTF(EUC-KR \'xx 시퀀스) → 텍스트 변환 */
+function decodeRtf(rtf) {
+  if (!rtf) return '';
+  // \'xx 시퀀스를 바이트 배열로 변환 후 EUC-KR 디코딩
+  // 먼저 \par → \n, RTF 명령어 제거
+  let text = rtf
+    .replace(/\{[^{}]*\{[^{}]*\}[^{}]*\}/g, '')  // 중첩 헤더 {...{...}...} 제거
+    .replace(/\\par\b\s?/g, '\n')
+    .replace(/\\[a-z]+\d*\s?/gi, '')
+    .replace(/[{}]/g, '');
+
+  // \'xx 시퀀스를 EUC-KR 디코딩
+  const parts = text.split(/((?:\\'[0-9a-f]{2})+)/gi);
+  let result = '';
+  for (const part of parts) {
+    if (part.startsWith("\\'")) {
+      const hexPairs = part.match(/\\'([0-9a-f]{2})/gi) || [];
+      const bytes = hexPairs.map(h => parseInt(h.slice(2), 16));
+      try { result += new TextDecoder('euc-kr').decode(Buffer.from(bytes)); } catch { result += '?'; }
+    } else {
+      result += part;
+    }
+  }
+  return result.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 const ADMIN_CODES = new Set(['Y2300','Z0010','Z0011','Z0030','BED2','BED3','BED4','MO3','MO4']);
 
@@ -83,27 +115,36 @@ async function getOpinionData(chartNo, admitDate, dischargeDate) {
   memoQuery += ` ORDER BY memo_date DESC`;
   const memoResult = await memoReq.query(memoQuery);
 
-  // 경과기록 — 입원기간으로 필터
+  // SOAP 경과기록 (BrOcs.Onote) — 입원기간으로 필터
   let notes = [];
   try {
-    const convReq = p.request().input('c', chartNo);
-    let convQuery = `SELECT TOP 50 convnote_date AS dt, convnote_jong_name AS noteType,
-       convnote_contents AS contents
-     FROM Wconvnote WHERE convnote_cham=@c`;
+    const ocs = await ocsReady;
+    const soapReq = ocs.request().input('c', chartNo);
+    let soapQuery = `SELECT TOP 100 note_date AS dt, note_gubun AS gubun, note_time AS tm,
+       CAST(note_contentsRTF AS VARCHAR(4000)) AS rtf
+     FROM Onote WHERE note_cham=@c`;
     if (dateFrom) {
-      convReq.input('df', dateFrom).input('dt2', dateTo);
-      convQuery += ` AND convnote_date >= @df AND convnote_date <= @dt2`;
+      soapReq.input('df', dateFrom).input('dt2', dateTo);
+      soapQuery += ` AND note_date >= @df AND note_date <= @dt2`;
     }
-    convQuery += ` ORDER BY convnote_date DESC`;
-    const conv = await convReq.query(convQuery);
-    notes = conv.recordset
-      .filter(r => (r.contents || '').trim())
-      .map(r => ({
-        date: (r.dt || '').trim(),
-        type: (r.noteType || '').trim(),
-        contents: (r.contents || '').trim(),
-      }));
-  } catch (e) { /* 테이블 없으면 무시 */ }
+    soapQuery += ` ORDER BY note_date DESC, note_time DESC`;
+    const soapResult = await soapReq.query(soapQuery);
+
+    // 날짜별로 S/O/A/P 그룹핑
+    const byDate = {};
+    for (const r of soapResult.recordset) {
+      const dt = (r.dt || '').trim();
+      if (!byDate[dt]) byDate[dt] = { date: dt, S: '', O: '', A: '', P: '' };
+      const label = SOAP_LABELS[r.gubun] || '';
+      if (label) {
+        const text = decodeRtf(r.rtf);
+        if (text) byDate[dt][label] = text;
+      }
+    }
+    notes = Object.values(byDate)
+      .filter(n => n.S || n.O || n.A || n.P)
+      .sort((a, b) => b.date.localeCompare(a.date));
+  } catch (e) { console.error('SOAP query error:', e.message); }
 
   const b = basic.recordset[0] || {};
   return {

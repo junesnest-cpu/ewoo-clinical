@@ -352,18 +352,22 @@ export default function MedicalOpinion() {
               </div>
             )}
 
-            {/* 경과기록 (SOAP) */}
+            {/* SOAP 경과기록 */}
             {opinionData.progressNotes?.length > 0 && (
               <div style={{ ...S.dataCard, gridColumn: '1 / -1' }}>
-                <div style={S.dataCardTitle}>경과기록 ({opinionData.progressNotes.length}건)</div>
-                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                <div style={S.dataCardTitle}>경과기록 SOAP ({opinionData.progressNotes.length}건)</div>
+                <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                   {opinionData.progressNotes.map((n, i) => (
                     <div key={i} style={S.noteItem}>
                       <div style={S.noteHeader}>
                         <span style={S.noteDate}>{formatDate(n.date)}</span>
-                        {n.type && <span style={S.noteType}>{n.type}</span>}
                       </div>
-                      <div style={S.noteContent}>{n.contents}</div>
+                      {['S', 'O', 'A', 'P'].map(k => n[k] ? (
+                        <div key={k} style={{ display: 'flex', gap: 6, marginBottom: 2 }}>
+                          <span style={S.soapLabel}>{k}</span>
+                          <span style={S.noteContent}>{n[k]}</span>
+                        </div>
+                      ) : null)}
                     </div>
                   ))}
                 </div>
@@ -553,7 +557,11 @@ const S = {
   },
   noteContent: {
     fontSize: 13, lineHeight: 1.5, color: '#475569',
-    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1,
+  },
+  soapLabel: {
+    fontWeight: 700, fontSize: 13, color: '#7c3aed',
+    minWidth: 16, flexShrink: 0,
   },
 
   treatGrid: {
