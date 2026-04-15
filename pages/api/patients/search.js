@@ -10,8 +10,8 @@ const DB_URL = 'https://ewoo-hospital-ward-default-rtdb.firebaseio.com';
 const API_KEY = 'AIzaSyAgr-alU71ZZj12S3MvCQKJQVdS6w-G3E4';
 
 // 서비스 계정용 고정 로그인 (환경변수)
-const LOGIN_EMAIL = process.env.HOSPITAL_LOGIN_EMAIL || '김민준@ewoo.com';
-const LOGIN_PW    = process.env.HOSPITAL_LOGIN_PW    || 'rlaalswns81!';
+const LOGIN_EMAIL = process.env.HOSPITAL_LOGIN_EMAIL;
+const LOGIN_PW    = process.env.HOSPITAL_LOGIN_PW;
 
 // 토큰 + 환자 데이터 캐시
 let cachedToken = null;
