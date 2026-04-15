@@ -44,18 +44,35 @@ export default function MedicalOpinion() {
     setError('');
 
     setLoading(true);
-    try {
-      const r = await fetch('/api/emr/opinion-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chartNo: patient.chartNo }),
-      });
-      if (!r.ok) throw new Error('데이터 조회 실패');
-      const data = await r.json();
-      setOpinionData(data);
-    } catch (e) {
-      setError(e.message);
+    // 환자 검색에서 얻은 기본 정보로 fallback 데이터 구성
+    const fallbackData = {
+      basic: { chartNo: patient.chartNo, name: patient.name, birth: patient.birthDate, sex: patient.gender },
+      diagnoses: patient.diagnosis ? [{ code: '', name: patient.diagnosis, startDate: '' }] : [],
+      admissions: [],
+      treatments: [],
+      memo: '',
+      progressNotes: [],
+    };
+
+    if (patient.chartNo) {
+      try {
+        const r = await fetch('/api/emr/opinion-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chartNo: patient.chartNo }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          setOpinionData(data);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.warn('EMR 조회 실패, 기본 정보로 진행:', e.message);
+      }
     }
+    // EMR 실패 또는 chartNo 없음 → fallback
+    setOpinionData(fallbackData);
     setLoading(false);
   }, []);
 
