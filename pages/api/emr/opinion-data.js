@@ -12,7 +12,7 @@ const EMR_PROXY_KEY = process.env.EMR_PROXY_KEY || 'ewoo-emr-2026';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const { chartNo } = req.body;
+  const { chartNo, admitDate, dischargeDate } = req.body;
   if (!chartNo) return res.status(400).json({ error: 'chartNo required' });
 
   if (!EMR_PROXY_URL) {
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
         'x-api-key': EMR_PROXY_KEY,
       },
-      body: JSON.stringify({ chartNo }),
+      body: JSON.stringify({ chartNo, admitDate, dischargeDate }),
     });
 
     if (!r.ok) {

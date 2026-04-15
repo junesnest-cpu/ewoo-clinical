@@ -5,6 +5,7 @@ export default function MedicalOpinion() {
   const [results, setResults] = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [opinionData, setOpinionData] = useState(null);
+  const [selectedAdmission, setSelectedAdmission] = useState(null);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -34,47 +35,84 @@ export default function MedicalOpinion() {
     return () => clearTimeout(timer);
   }, [query, selectedPatient]);
 
-  // 환자 선택 시 EMR 데이터 로드
+  // 환자 선택 시 EMR 데이터 로드 (입원이력 포함)
   const selectPatient = useCallback(async (patient) => {
     setSelectedPatient(patient);
     setQuery(patient.name);
     setResults(null);
     setDraft('');
     setOpinionData(null);
+    setSelectedAdmission(null);
     setError('');
 
+    if (!patient.chartNo) {
+      setOpinionData({
+        basic: { chartNo: '', name: patient.name, birth: patient.birthDate, sex: patient.gender },
+        diagnoses: patient.diagnosis ? [{ code: '', name: patient.diagnosis, startDate: '' }] : [],
+        admissions: [], treatments: [], memo: '', progressNotes: [],
+      });
+      return;
+    }
+
     setLoading(true);
-    // 환자 검색에서 얻은 기본 정보로 fallback 데이터 구성
-    const fallbackData = {
+    try {
+      const r = await fetch('/api/emr/opinion-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chartNo: patient.chartNo }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setOpinionData(data);
+        // 현재 입원 중(퇴원일 없음)이면 자동 선택, 아니면 직전 입원 선택
+        if (data.admissions.length > 0) {
+          const current = data.admissions.find(a => !a.dischargeDate);
+          setSelectedAdmission(current || data.admissions[0]);
+        }
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.warn('EMR 조회 실패:', e.message);
+    }
+    setOpinionData({
       basic: { chartNo: patient.chartNo, name: patient.name, birth: patient.birthDate, sex: patient.gender },
       diagnoses: patient.diagnosis ? [{ code: '', name: patient.diagnosis, startDate: '' }] : [],
-      admissions: [],
-      treatments: [],
-      memo: '',
-      progressNotes: [],
-    };
-
-    if (patient.chartNo) {
-      try {
-        const r = await fetch('/api/emr/opinion-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chartNo: patient.chartNo }),
-        });
-        if (r.ok) {
-          const data = await r.json();
-          setOpinionData(data);
-          setLoading(false);
-          return;
-        }
-      } catch (e) {
-        console.warn('EMR 조회 실패, 기본 정보로 진행:', e.message);
-      }
-    }
-    // EMR 실패 또는 chartNo 없음 → fallback
-    setOpinionData(fallbackData);
+      admissions: [], treatments: [], memo: '', progressNotes: [],
+    });
     setLoading(false);
   }, []);
+
+  // 입원기간 선택 시 해당 기간의 치료/경과기록 재조회
+  const selectAdmission = useCallback(async (admission) => {
+    setSelectedAdmission(admission);
+    if (!selectedPatient?.chartNo || !admission) return;
+
+    setLoading(true);
+    setDraft('');
+    try {
+      const r = await fetch('/api/emr/opinion-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chartNo: selectedPatient.chartNo,
+          admitDate: admission.admitDate,
+          dischargeDate: admission.dischargeDate || '',
+        }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setOpinionData(prev => ({
+          ...prev,
+          treatments: data.treatments,
+          progressNotes: data.progressNotes,
+        }));
+      }
+    } catch (e) {
+      console.warn('기간별 조회 실패:', e.message);
+    }
+    setLoading(false);
+  }, [selectedPatient]);
 
   // 검색 초기화
   const clearSearch = () => {
@@ -82,6 +120,7 @@ export default function MedicalOpinion() {
     setResults(null);
     setSelectedPatient(null);
     setOpinionData(null);
+    setSelectedAdmission(null);
     setDraft('');
     setError('');
     inputRef.current?.focus();
@@ -217,21 +256,49 @@ export default function MedicalOpinion() {
                 <span style={S.dataLabel}>차트번호</span>
                 <span>{opinionData.basic.chartNo}</span>
               </div>
-              {opinionData.admissions[0] && (
+              {selectedAdmission && (
                 <>
                   <div style={S.dataRow}>
                     <span style={S.dataLabel}>입원일</span>
-                    <span>{formatDate(opinionData.admissions[0].admitDate)}</span>
+                    <span>{formatDate(selectedAdmission.admitDate)}</span>
                   </div>
-                  {opinionData.admissions[0].dischargeDate && (
-                    <div style={S.dataRow}>
-                      <span style={S.dataLabel}>퇴원일</span>
-                      <span>{formatDate(opinionData.admissions[0].dischargeDate)}</span>
-                    </div>
-                  )}
+                  <div style={S.dataRow}>
+                    <span style={S.dataLabel}>퇴원일</span>
+                    <span>{selectedAdmission.dischargeDate ? formatDate(selectedAdmission.dischargeDate) : '입원 중'}</span>
+                  </div>
                 </>
               )}
             </div>
+
+            {/* 입원기간 선택 */}
+            {opinionData.admissions.length > 0 && (
+              <div style={S.dataCard}>
+                <div style={S.dataCardTitle}>입원기간 선택</div>
+                {opinionData.admissions.map((a, i) => {
+                  const isSelected = selectedAdmission?.admitDate === a.admitDate;
+                  const isCurrent = !a.dischargeDate;
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        ...S.admissionItem,
+                        background: isSelected ? '#ede9fe' : '#f8fafc',
+                        borderColor: isSelected ? '#7c3aed' : '#e2e8f0',
+                      }}
+                      onClick={() => !isSelected && selectAdmission(a)}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: isSelected ? '#7c3aed' : '#1e293b' }}>
+                          {formatDate(a.admitDate)} ~ {isCurrent ? '현재' : formatDate(a.dischargeDate)}
+                        </span>
+                        {isCurrent && <span style={S.currentBadge}>입원중</span>}
+                      </div>
+                      {isSelected && <span style={{ color: '#7c3aed', fontSize: 14, fontWeight: 700 }}>선택됨</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* 진단명 */}
             <div style={S.dataCard}>
@@ -393,6 +460,16 @@ const S = {
     background: '#f5f3ff', padding: '1px 6px', borderRadius: 4, flexShrink: 0,
   },
   emptyText: { color: '#94a3b8', fontSize: 13, fontStyle: 'italic' },
+
+  admissionItem: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '10px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0',
+    marginBottom: 6, cursor: 'pointer', transition: 'all 0.15s',
+  },
+  currentBadge: {
+    background: '#dcfce7', color: '#16a34a', fontSize: 11, fontWeight: 700,
+    padding: '2px 8px', borderRadius: 10,
+  },
 
   treatGrid: {
     display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8,

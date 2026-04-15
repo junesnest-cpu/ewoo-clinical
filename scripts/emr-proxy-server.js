@@ -14,7 +14,7 @@ const API_KEY = 'ewoo-emr-2026';
 
 const ADMIN_CODES = new Set(['Y2300','Z0010','Z0011','Z0030','BED2','BED3','BED4','MO3','MO4']);
 
-async function getOpinionData(chartNo) {
+async function getOpinionData(chartNo, admitDate, dischargeDate) {
   const p = await poolReady;
 
   const basic = await p.request().input('c', chartNo).query(
@@ -34,23 +34,32 @@ async function getOpinionData(chartNo) {
   );
 
   const hist = await p.request().input('c', chartNo).query(
-    `SELECT TOP 5 INDAT AS admitDate, OUTDAT AS dischargeDate,
+    `SELECT TOP 10 INDAT AS admitDate, OUTDAT AS dischargeDate,
        INSUCLS AS insuCls, DIAGCD AS diagCode
      FROM SILVER_PATIENT_INFO
      WHERE CHARTNO=@c AND INDAT IS NOT NULL AND INDAT<>''
      ORDER BY INDAT DESC`
   );
 
-  const orders = await p.request().input('c', chartNo).query(
-    `SELECT i.idam_date AS dt, RTRIM(i.idam_momn) AS code,
-       m.momm_h_name AS mommName, n.momn_h_name AS momnName,
-       i.idam_times AS times, i.idam_day AS days, i.idam_dosage AS dosage
-     FROM Widam i
-     LEFT JOIN Wmomm m ON RTRIM(i.idam_momn)=RTRIM(m.momm_key)
-     LEFT JOIN Wmomn n ON RTRIM(i.idam_momn)=RTRIM(n.momn_key)
-     WHERE i.idam_cham=@c
-     ORDER BY i.idam_date DESC`
-  );
+  // 입원기간 필터 — admitDate/dischargeDate가 전달되면 해당 기간으로 한정
+  const dateFrom = admitDate || '';
+  const dateTo = dischargeDate || '99991231'; // 퇴원일 없으면(현재 입원) 미래까지
+
+  // 치료(처방) 내역 — 입원기간으로 필터
+  const ordersReq = p.request().input('c', chartNo);
+  let ordersQuery = `SELECT i.idam_date AS dt, RTRIM(i.idam_momn) AS code,
+     m.momm_h_name AS mommName, n.momn_h_name AS momnName,
+     i.idam_times AS times, i.idam_day AS days, i.idam_dosage AS dosage
+   FROM Widam i
+   LEFT JOIN Wmomm m ON RTRIM(i.idam_momn)=RTRIM(m.momm_key)
+   LEFT JOIN Wmomn n ON RTRIM(i.idam_momn)=RTRIM(n.momn_key)
+   WHERE i.idam_cham=@c`;
+  if (dateFrom) {
+    ordersReq.input('df', dateFrom).input('dt2', dateTo);
+    ordersQuery += ` AND i.idam_date >= @df AND i.idam_date <= @dt2`;
+  }
+  ordersQuery += ` ORDER BY i.idam_date DESC`;
+  const orders = await ordersReq.query(ordersQuery);
 
   const tMap = {};
   for (const r of orders.recordset) {
@@ -59,22 +68,27 @@ async function getOpinionData(chartNo) {
     const name = (r.mommName || r.momnName || code).trim();
     if (!tMap[code]) tMap[code] = { code, name, dates: [], count: 0 };
     tMap[code].count++;
-    const dt = (r.dt || '').trim();
-    if (dt && !tMap[code].dates.includes(dt)) tMap[code].dates.push(dt);
+    const d = (r.dt || '').trim();
+    if (d && !tMap[code].dates.includes(d)) tMap[code].dates.push(d);
   }
 
   const memo = await p.request().input('c', chartNo).query(
     `SELECT chametc_memo AS memo FROM WchamEtc WHERE RTRIM(chametc_cham)=@c`
   );
 
+  // 경과기록 — 입원기간으로 필터
   let notes = [];
   try {
-    const conv = await p.request().input('c', chartNo).query(
-      `SELECT TOP 20 convnote_date AS dt, convnote_jong_name AS noteType,
-         convnote_contents AS contents
-       FROM Wconvnote WHERE convnote_cham=@c
-       ORDER BY convnote_date DESC`
-    );
+    const convReq = p.request().input('c', chartNo);
+    let convQuery = `SELECT TOP 50 convnote_date AS dt, convnote_jong_name AS noteType,
+       convnote_contents AS contents
+     FROM Wconvnote WHERE convnote_cham=@c`;
+    if (dateFrom) {
+      convReq.input('df', dateFrom).input('dt2', dateTo);
+      convQuery += ` AND convnote_date >= @df AND convnote_date <= @dt2`;
+    }
+    convQuery += ` ORDER BY convnote_date DESC`;
+    const conv = await convReq.query(convQuery);
     notes = conv.recordset
       .filter(r => (r.contents || '').trim())
       .map(r => ({
@@ -126,9 +140,9 @@ const server = http.createServer(async (req, res) => {
     req.on('data', c => body += c);
     req.on('end', async () => {
       try {
-        const { chartNo } = JSON.parse(body);
+        const { chartNo, admitDate, dischargeDate } = JSON.parse(body);
         if (!chartNo) { res.writeHead(400); res.end('{"error":"chartNo required"}'); return; }
-        const data = await getOpinionData(chartNo);
+        const data = await getOpinionData(chartNo, admitDate, dischargeDate);
         res.writeHead(200); res.end(JSON.stringify(data));
       } catch (e) {
         console.error('Error:', e.message);
