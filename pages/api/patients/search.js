@@ -5,7 +5,24 @@
  * RTDB는 부분 문자열 검색을 지원하지 않으므로
  * orderByChild('name') + startAt/endAt로 prefix 검색 수행
  */
-import { hospitalRtdb } from '../../../lib/firebaseAdmin';
+import { initializeApp, getApps, getApp, cert } from 'firebase-admin/app';
+import { getDatabase } from 'firebase-admin/database';
+
+function getHospitalDb() {
+  let app;
+  try { app = getApp('hospital'); } catch {
+    const pk = (process.env.HOSPITAL_FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+    app = initializeApp({
+      credential: cert({
+        projectId:   process.env.HOSPITAL_FIREBASE_PROJECT_ID,
+        clientEmail: process.env.HOSPITAL_FIREBASE_CLIENT_EMAIL,
+        privateKey:  pk,
+      }),
+      databaseURL: 'https://ewoo-hospital-ward-default-rtdb.firebaseio.com',
+    }, 'hospital');
+  }
+  return getDatabase(app);
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
@@ -14,8 +31,9 @@ export default async function handler(req, res) {
   if (!q) return res.json({ patients: [] });
 
   try {
+    const db = getHospitalDb();
     // prefix 검색: "홍" → "홍" ~ "홍\uf8ff"
-    const snap = await hospitalRtdb.ref('patients')
+    const snap = await db.ref('patients')
       .orderByChild('name')
       .startAt(q)
       .endAt(q + '\uf8ff')
@@ -39,7 +57,7 @@ export default async function handler(req, res) {
     found.sort((a, b) => (a.name > b.name ? 1 : -1));
     return res.json({ patients: found });
   } catch (err) {
-    console.error('Patient search error:', err.message);
+    console.error('Patient search error:', err.stack || err.message);
     return res.status(500).json({ error: err.message });
   }
 }
