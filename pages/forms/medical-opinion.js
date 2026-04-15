@@ -333,6 +333,32 @@ export default function MedicalOpinion() {
                 <div style={S.emptyText}>처방 데이터 없음</div>
               )}
             </div>
+
+            {/* 환자 메모 */}
+            {opinionData.memo && (
+              <div style={{ ...S.dataCard, gridColumn: '1 / -1' }}>
+                <div style={S.dataCardTitle}>환자 메모</div>
+                <div style={S.memoText}>{opinionData.memo}</div>
+              </div>
+            )}
+
+            {/* 경과기록 (SOAP) */}
+            {opinionData.progressNotes?.length > 0 && (
+              <div style={{ ...S.dataCard, gridColumn: '1 / -1' }}>
+                <div style={S.dataCardTitle}>경과기록 ({opinionData.progressNotes.length}건)</div>
+                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                  {opinionData.progressNotes.map((n, i) => (
+                    <div key={i} style={S.noteItem}>
+                      <div style={S.noteHeader}>
+                        <span style={S.noteDate}>{formatDate(n.date)}</span>
+                        {n.type && <span style={S.noteType}>{n.type}</span>}
+                      </div>
+                      <div style={S.noteContent}>{n.contents}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 생성 버튼 */}
@@ -495,6 +521,29 @@ const S = {
   currentBadge: {
     background: '#dcfce7', color: '#16a34a', fontSize: 11, fontWeight: 700,
     padding: '2px 8px', borderRadius: 10,
+  },
+
+  memoText: {
+    fontSize: 14, lineHeight: 1.6, color: '#334155',
+    background: '#f8fafc', padding: '10px 14px', borderRadius: 6,
+    whiteSpace: 'pre-wrap',
+  },
+  noteItem: {
+    padding: '8px 0', borderBottom: '1px solid #f1f5f9',
+  },
+  noteHeader: {
+    display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4,
+  },
+  noteDate: {
+    fontSize: 12, fontWeight: 700, color: '#7c3aed',
+  },
+  noteType: {
+    fontSize: 11, background: '#f1f5f9', color: '#64748b',
+    padding: '1px 6px', borderRadius: 4, fontWeight: 600,
+  },
+  noteContent: {
+    fontSize: 13, lineHeight: 1.5, color: '#475569',
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
   },
 
   treatGrid: {
