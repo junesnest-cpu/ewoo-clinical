@@ -300,7 +300,7 @@ export default function MedicalOpinion() {
               </div>
             )}
 
-            {/* 진단명 */}
+            {/* 진단명 + 처방메모 (같은 행, 50/50) */}
             <div style={S.dataCard}>
               <div style={S.dataCardTitle}>진단명</div>
               {opinionData.diagnoses.length > 0 ? (
@@ -312,6 +312,25 @@ export default function MedicalOpinion() {
                 ))
               ) : (
                 <div style={S.emptyText}>진단 데이터 없음</div>
+              )}
+            </div>
+
+            <div style={S.dataCard}>
+              <div style={S.dataCardTitle}>처방메모 ({opinionData.prescriptionMemos?.length || 0}건)</div>
+              {opinionData.prescriptionMemos?.length > 0 ? (
+                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  {opinionData.prescriptionMemos.map((m, i) => (
+                    <div key={i} style={S.noteItem}>
+                      <div style={S.noteHeader}>
+                        <span style={S.noteDate}>{formatDate(m.date)}</span>
+                        {m.author && <span style={S.noteType}>{m.author}</span>}
+                      </div>
+                      <div style={S.noteContent}>{m.content}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={S.emptyText}>처방메모 없음</div>
               )}
             </div>
 
@@ -333,24 +352,6 @@ export default function MedicalOpinion() {
                 <div style={S.emptyText}>처방 데이터 없음</div>
               )}
             </div>
-
-            {/* 처방메모 */}
-            {opinionData.prescriptionMemos?.length > 0 && (
-              <div style={{ ...S.dataCard, gridColumn: '1 / -1' }}>
-                <div style={S.dataCardTitle}>처방메모 ({opinionData.prescriptionMemos.length}건)</div>
-                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                  {opinionData.prescriptionMemos.map((m, i) => (
-                    <div key={i} style={S.noteItem}>
-                      <div style={S.noteHeader}>
-                        <span style={S.noteDate}>{formatDate(m.date)}</span>
-                        {m.author && <span style={S.noteType}>{m.author}</span>}
-                      </div>
-                      <div style={S.noteContent}>{m.content}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* SOAP 경과기록 */}
             {opinionData.progressNotes?.length > 0 && (
@@ -504,7 +505,7 @@ const S = {
   },
 
   dataGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+    display: 'grid', gridTemplateColumns: '1fr 1fr',
     gap: 16, marginBottom: 20,
   },
   dataCard: {
