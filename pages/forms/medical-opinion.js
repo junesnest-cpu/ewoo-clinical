@@ -362,12 +362,38 @@ export default function MedicalOpinion() {
                   {copied ? '복사됨!' : '클립보드 복사'}
                 </button>
               </div>
-              <textarea
-                style={S.resultText}
-                value={draft}
-                onChange={e => setDraft(e.target.value)}
-                rows={20}
-              />
+
+              {/* 편집 필요 항목 하이라이트 */}
+              {(() => {
+                const edits = [...draft.matchAll(/【([^】]+)】/g)].map(m => m[1]);
+                return edits.length > 0 ? (
+                  <div style={S.editHints}>
+                    <span style={S.editHintsLabel}>편집 필요 ({edits.length}개):</span>
+                    {edits.map((e, i) => (
+                      <span key={i} style={S.editHintTag}>{e}</span>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
+
+              <div style={{ position: 'relative' }}>
+                {/* 하이라이트 오버레이 */}
+                <div
+                  style={S.highlightOverlay}
+                  dangerouslySetInnerHTML={{
+                    __html: draft
+                      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                      .replace(/【([^】]+)】/g, '<mark style="background:#fef08a;border-radius:3px;padding:1px 2px;color:#92400e;font-weight:600">【$1】</mark>')
+                      + '\n',
+                  }}
+                />
+                <textarea
+                  style={S.resultText}
+                  value={draft}
+                  onChange={e => setDraft(e.target.value)}
+                  rows={20}
+                />
+              </div>
             </div>
           )}
         </>
@@ -504,6 +530,28 @@ const S = {
     width: '100%', padding: '16px', fontSize: 14, lineHeight: 1.8,
     borderRadius: 10, border: '1.5px solid #cbd5e1', outline: 'none',
     fontFamily: 'inherit', resize: 'vertical', minHeight: 300,
-    boxSizing: 'border-box',
+    boxSizing: 'border-box', background: 'transparent', position: 'relative',
+    zIndex: 1, color: 'transparent', caretColor: '#000',
+  },
+  highlightOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    padding: '16px', fontSize: 14, lineHeight: 1.8,
+    fontFamily: 'inherit', whiteSpace: 'pre-wrap', wordWrap: 'break-word',
+    borderRadius: 10, border: '1.5px solid transparent',
+    boxSizing: 'border-box', pointerEvents: 'none',
+    color: '#000', background: '#fff', zIndex: 0,
+    overflow: 'auto',
+  },
+  editHints: {
+    display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+    marginBottom: 8, padding: '8px 12px',
+    background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
+  },
+  editHintsLabel: {
+    fontSize: 13, fontWeight: 700, color: '#92400e',
+  },
+  editHintTag: {
+    fontSize: 12, background: '#fef08a', color: '#78350f', fontWeight: 600,
+    padding: '2px 8px', borderRadius: 10,
   },
 };
