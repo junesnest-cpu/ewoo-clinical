@@ -22,6 +22,9 @@ export default function MedicalOpinion() {
         if (r.ok) {
           const data = await r.json();
           setResults(data.patients || []);
+        } else {
+          console.error('환자 검색 실패:', r.status);
+          setResults([]);
         }
       } catch (e) {
         console.error('환자 검색 오류:', e);

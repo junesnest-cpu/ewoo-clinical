@@ -1,27 +1,26 @@
 /**
- * 환자 검색 API — ewoo-hospital Firebase (EMR 동기화 데이터)에서 조회
+ * 환자 검색 API — ewoo-hospital Firebase RTDB REST API로 조회
  * GET /api/patients/search?q=이름
  *
- * RTDB는 부분 문자열 검색을 지원하지 않으므로
- * orderByChild('name') + startAt/endAt로 prefix 검색 수행
+ * Vercel 서버리스에서 Firebase Admin RTDB SDK는 WebSocket 연결 문제로
+ * 타임아웃 발생 → REST API(HTTP)로 대체
  */
-import { initializeApp, getApps, getApp, cert } from 'firebase-admin/app';
-import { getDatabase } from 'firebase-admin/database';
+import { GoogleAuth } from 'google-auth-library';
 
-function getHospitalDb() {
-  let app;
-  try { app = getApp('hospital'); } catch {
-    const pk = (process.env.HOSPITAL_FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-    app = initializeApp({
-      credential: cert({
-        projectId:   process.env.HOSPITAL_FIREBASE_PROJECT_ID,
-        clientEmail: process.env.HOSPITAL_FIREBASE_CLIENT_EMAIL,
-        privateKey:  pk,
-      }),
-      databaseURL: 'https://ewoo-hospital-ward-default-rtdb.firebaseio.com',
-    }, 'hospital');
-  }
-  return getDatabase(app);
+const DB_URL = 'https://ewoo-hospital-ward-default-rtdb.firebaseio.com';
+
+let cachedAuth;
+function getAuth() {
+  if (cachedAuth) return cachedAuth;
+  const pk = (process.env.HOSPITAL_FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  cachedAuth = new GoogleAuth({
+    credentials: {
+      client_email: process.env.HOSPITAL_FIREBASE_CLIENT_EMAIL,
+      private_key:  pk,
+    },
+    scopes: ['https://www.googleapis.com/auth/firebase.database'],
+  });
+  return cachedAuth;
 }
 
 export default async function handler(req, res) {
@@ -31,30 +30,37 @@ export default async function handler(req, res) {
   if (!q) return res.json({ patients: [] });
 
   try {
-    const db = getHospitalDb();
-    // prefix 검색: "홍" → "홍" ~ "홍\uf8ff"
-    const snap = await db.ref('patients')
-      .orderByChild('name')
-      .startAt(q)
-      .endAt(q + '\uf8ff')
-      .limitToFirst(20)
-      .once('value');
+    const auth = getAuth();
+    const client = await auth.getClient();
+    const token = await client.getAccessToken();
 
-    const found = [];
-    snap.forEach(child => {
-      const p = child.val();
-      found.push({
-        chartNo:   p.chartNo || '',
-        name:      p.name || '',
-        birthDate: p.birthDate || p.birthYear || '',
-        gender:    p.gender || '',
-        phone:     p.phone || '',
-        doctor:    p.doctor || '',
-        diagnosis: p.diagnosis || '',
-      });
+    // RTDB REST API — orderBy + startAt/endAt prefix 검색
+    const params = new URLSearchParams({
+      orderBy: '"name"',
+      startAt: JSON.stringify(q),
+      endAt:   JSON.stringify(q + '\uf8ff'),
+      limitToFirst: '20',
+      auth: token.token,
     });
 
-    found.sort((a, b) => (a.name > b.name ? 1 : -1));
+    const r = await fetch(`${DB_URL}/patients.json?${params}`);
+    if (!r.ok) {
+      const body = await r.text();
+      console.error('RTDB REST error:', r.status, body);
+      return res.status(502).json({ error: 'Firebase query failed' });
+    }
+
+    const data = await r.json();
+    const found = Object.values(data || {}).map(p => ({
+      chartNo:   p.chartNo || '',
+      name:      p.name || '',
+      birthDate: p.birthDate || p.birthYear || '',
+      gender:    p.gender || '',
+      phone:     p.phone || '',
+      doctor:    p.doctor || '',
+      diagnosis: p.diagnosis || '',
+    })).sort((a, b) => (a.name > b.name ? 1 : -1));
+
     return res.json({ patients: found });
   } catch (err) {
     console.error('Patient search error:', err.stack || err.message);
