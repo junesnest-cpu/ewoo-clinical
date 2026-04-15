@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 export default function MedicalOpinion() {
-  const [patients, setPatients] = useState([]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
-  const [searching, setSearching] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [opinionData, setOpinionData] = useState(null);
   const [draft, setDraft] = useState('');
@@ -14,29 +12,24 @@ export default function MedicalOpinion() {
   const [copied, setCopied] = useState(false);
   const inputRef = useRef(null);
 
-  // 입원환자 목록 로드
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/emr/patients');
-        if (r.ok) {
-          const data = await r.json();
-          setPatients(data.patients || []);
-        }
-      } catch (e) { console.error(e); }
-    })();
-  }, []);
-
-  // 이름 검색 (500ms debounce)
+  // 이름 검색 (300ms debounce) — 서버 API를 통해 hospital Firebase 조회
   useEffect(() => {
     const trimmed = query.trim();
-    if (!trimmed || trimmed.length < 1) { setResults(null); return; }
-    const timer = setTimeout(() => {
-      const found = patients.filter(p => p.name?.includes(trimmed));
-      setResults(found);
+    if (!trimmed || selectedPatient) { if (!selectedPatient) setResults(null); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/patients/search?q=${encodeURIComponent(trimmed)}`);
+        if (r.ok) {
+          const data = await r.json();
+          setResults(data.patients || []);
+        }
+      } catch (e) {
+        console.error('환자 검색 오류:', e);
+        setResults([]);
+      }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, patients]);
+  }, [query, selectedPatient]);
 
   // 환자 선택 시 EMR 데이터 로드
   const selectPatient = useCallback(async (patient) => {
@@ -159,11 +152,12 @@ export default function MedicalOpinion() {
                     onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
                     onMouseLeave={e => e.currentTarget.style.background = '#fff'}
                   >
-                    <span style={S.roomBadge}>{p.room}호</span>
                     <div style={{ flex: 1 }}>
                       <div style={S.resultName}>{p.name}</div>
                       <div style={S.resultMeta}>
-                        차트 {p.chartNo}
+                        {p.chartNo && `차트 ${p.chartNo}`}
+                        {p.birthDate && ` · ${p.birthDate}`}
+                        {p.diagnosis && ` · ${p.diagnosis}`}
                       </div>
                     </div>
                     <span style={{ color: '#7c3aed', fontSize: 18 }}>&rsaquo;</span>
@@ -177,9 +171,9 @@ export default function MedicalOpinion() {
         {/* 선택된 환자 표시 */}
         {selectedPatient && (
           <div style={S.selectedBar}>
-            <span style={S.roomBadge}>{selectedPatient.room}호</span>
             <span style={S.selectedName}>{selectedPatient.name}</span>
-            <span style={S.selectedChart}>차트 {selectedPatient.chartNo}</span>
+            {selectedPatient.chartNo && <span style={S.selectedChart}>차트 {selectedPatient.chartNo}</span>}
+            {selectedPatient.diagnosis && <span style={S.selectedChart}>{selectedPatient.diagnosis}</span>}
             <button style={S.changeBtn} onClick={clearSearch}>변경</button>
           </div>
         )}
@@ -333,11 +327,6 @@ const S = {
   resultName: { fontWeight: 700, fontSize: 15, color: '#0f172a' },
   resultMeta: { fontSize: 12, color: '#94a3b8', marginTop: 1 },
   noResult: { textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: 14 },
-
-  roomBadge: {
-    background: '#0f2744', color: '#fff', fontSize: 12, fontWeight: 700,
-    padding: '3px 8px', borderRadius: 5, flexShrink: 0,
-  },
 
   selectedBar: {
     marginTop: 8, display: 'flex', alignItems: 'center', gap: 10,
