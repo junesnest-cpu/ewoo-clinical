@@ -329,6 +329,85 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 병동 라운딩 요약 — 전체 입원환자의 최근 SOAP S + 업무메모 벌크 조회
+  if (req.method === 'GET' && req.url === '/api/emr/rounding-summary') {
+    try {
+      const p = await poolReady;
+      const ocs = await ocsReady;
+
+      // 1) 현재 입원환자 목록 (Wbedm + 기본정보)
+      const bedResult = await p.request().query(`
+        SELECT b.bedm_cham AS chartNo, b.bedm_in_date AS admitDate,
+          (SELECT TOP 1 chamJumin1 FROM VIEWJUBLIST WHERE chamKey = b.bedm_cham) AS jumin
+        FROM Wbedm b
+        WHERE b.bedm_cham IS NOT NULL AND b.bedm_cham <> ''
+      `);
+      const chartNos = bedResult.recordset.map(r => String(r.chartNo).trim()).filter(Boolean);
+      if (!chartNos.length) { res.writeHead(200); res.end(JSON.stringify({ patients: {} })); return; }
+
+      // chartNo → admitDate/jumin 매핑
+      const infoMap = {};
+      for (const r of bedResult.recordset) {
+        const c = String(r.chartNo).trim();
+        infoMap[c] = { admitDate: (r.admitDate || '').trim(), jumin: (r.jumin || '').trim() };
+      }
+
+      // 2) 최근 SOAP S (각 환자별 최신 1건)
+      const soapMap = {};
+      try {
+        const inList = chartNos.map(c => `'${c}'`).join(',');
+        const soapResult = await ocs.request().query(`
+          SELECT x.note_cham, x.note_date, x.rtf FROM (
+            SELECT note_cham, note_date,
+              CAST(note_contentsRTF AS VARCHAR(4000)) AS rtf,
+              ROW_NUMBER() OVER (PARTITION BY note_cham ORDER BY note_date DESC, note_time DESC) AS rn
+            FROM Onote
+            WHERE note_gubun = 0 AND RTRIM(note_cham) IN (${inList})
+          ) x WHERE x.rn = 1
+        `);
+        for (const r of soapResult.recordset) {
+          const c = String(r.note_cham).trim();
+          soapMap[c] = { date: (r.note_date || '').trim(), text: decodeRtf(r.rtf) };
+        }
+      } catch (e) { console.error('Rounding SOAP error:', e.message); }
+
+      // 3) 최근 업무메모 (각 환자별 최신 1건)
+      const memoMap = {};
+      try {
+        const inList = chartNos.map(c => `'${c}'`).join(',');
+        const wmResult = await ocs.request().query(`
+          SELECT x.workmemo_cham, x.dt, x.memo, x.author FROM (
+            SELECT workmemo_cham, workmemo_date AS dt, workmemo_memo AS memo,
+              workmemo_user AS author,
+              ROW_NUMBER() OVER (PARTITION BY workmemo_cham ORDER BY workmemo_date DESC, workmemo_cnt DESC) AS rn
+            FROM Oworkmemo
+            WHERE LTRIM(RTRIM(workmemo_memo)) != '' AND RTRIM(workmemo_cham) IN (${inList})
+          ) x WHERE x.rn = 1
+        `);
+        for (const r of wmResult.recordset) {
+          const c = String(r.workmemo_cham).trim();
+          memoMap[c] = { date: (r.dt || '').trim(), memo: (r.memo || '').trim(), author: (r.author || '').trim() };
+        }
+      } catch (e) { console.error('Rounding workMemo error:', e.message); }
+
+      // 4) 병합
+      const patients = {};
+      for (const c of chartNos) {
+        patients[c] = {
+          jumin: infoMap[c]?.jumin || '',
+          soapS: soapMap[c] || null,
+          workMemo: memoMap[c] || null,
+        };
+      }
+
+      res.writeHead(200); res.end(JSON.stringify({ patients }));
+    } catch (e) {
+      console.error('Rounding summary error:', e.message);
+      res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (req.method === 'POST' && req.url === '/api/emr/opinion-data') {
     let body = '';
     req.on('data', c => body += c);

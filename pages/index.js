@@ -3,9 +3,7 @@ import Link from 'next/link';
 
 const MEDICAL_FORMS = [
   { id: 'doctor-rounding',    icon: '🩺', label: '병동 라운딩 체크',   desc: '입원환자 일일 라운딩 체크리스트', color: '#0369a1' },
-  { id: 'admission-summary',  icon: '📋', label: '입원 요약지',       desc: 'EMR 데이터 기반 입원 요약지 자동 작성', color: '#059669' },
   { id: 'medical-opinion',    icon: '📄', label: '소견서 작성',       desc: '진단·치료 경과 기반 소견서 생성', color: '#7c3aed' },
-  { id: 'discharge-summary',  icon: '📝', label: '퇴원 요약지',       desc: '치료 경과·퇴원 계획 자동 요약', color: '#dc2626' },
 ];
 
 const NURSING_FORMS = [
