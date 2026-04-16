@@ -12,6 +12,7 @@ export default function MedicalOpinion() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const inputRef = useRef(null);
+  const textareaRef = useRef(null);
 
   // 이름 검색 (300ms debounce) — 서버 API를 통해 hospital Firebase 조회
   useEffect(() => {
@@ -157,6 +158,16 @@ export default function MedicalOpinion() {
     }
     setGenerating(false);
   };
+
+  // textarea 자동 높이 조절 (모바일 스크롤 문제 해결)
+  const autoResize = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  }, []);
+
+  useEffect(() => { if (draft) setTimeout(autoResize, 0); }, [draft, autoResize]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(draft).then(() => {
@@ -440,10 +451,10 @@ export default function MedicalOpinion() {
                   }}
                 />
                 <textarea
+                  ref={textareaRef}
                   style={S.resultText}
                   value={draft}
-                  onChange={e => setDraft(e.target.value)}
-                  rows={20}
+                  onChange={e => { setDraft(e.target.value); autoResize(); }}
                 />
               </div>
             </div>
@@ -616,9 +627,10 @@ const S = {
   resultText: {
     width: '100%', padding: '16px', fontSize: 14, lineHeight: 1.8,
     borderRadius: 10, border: '1.5px solid #cbd5e1', outline: 'none',
-    fontFamily: 'inherit', resize: 'vertical', minHeight: 300,
+    fontFamily: 'inherit', resize: 'none', minHeight: 300,
     boxSizing: 'border-box', background: 'transparent', position: 'relative',
     zIndex: 1, color: 'transparent', caretColor: '#000',
+    overflow: 'hidden',
   },
   highlightOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -627,7 +639,7 @@ const S = {
     borderRadius: 10, border: '1.5px solid transparent',
     boxSizing: 'border-box', pointerEvents: 'none',
     color: '#000', background: '#fff', zIndex: 0,
-    overflow: 'auto',
+    overflow: 'hidden',
   },
   editHints: {
     display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
