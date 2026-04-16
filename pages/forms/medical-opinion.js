@@ -342,26 +342,6 @@ export default function MedicalOpinion() {
               )}
             </div>
 
-            {/* 처방메모 */}
-            <div style={S.dataCard}>
-              <div style={S.dataCardTitle}>처방메모 ({opinionData.prescriptionMemos?.length || 0}건)</div>
-              {opinionData.prescriptionMemos?.length > 0 ? (
-                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                  {opinionData.prescriptionMemos.map((m, i) => (
-                    <div key={i} style={S.noteItem}>
-                      <div style={S.noteHeader}>
-                        <span style={S.noteDate}>{formatDate(m.date)}</span>
-                        {m.author && <span style={S.noteType}>{m.author}</span>}
-                      </div>
-                      <div style={S.noteContent}>{m.content}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={S.emptyText}>처방메모 없음</div>
-              )}
-            </div>
-
             {/* 경과기록 메모 (좌) + 업무메모 (우) */}
             <div style={S.dataCard}>
               <div style={S.dataCardTitle}>경과기록 메모 ({opinionData.doctorMemo?.length || 0}건)</div>
@@ -385,11 +365,14 @@ export default function MedicalOpinion() {
             <div style={S.dataCard}>
               <div style={S.dataCardTitle}>업무메모 ({opinionData.workMemos?.length || 0}건)</div>
               {opinionData.workMemos?.length > 0 ? (
-                <div style={{ maxHeight: 130, overflowY: 'auto' }}>
+                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                   {opinionData.workMemos.map((m, i) => (
-                    <div key={i} style={{ padding: '3px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-                      <span style={S.noteDate}>{formatDate(m.date)}</span>{' '}
-                      <span style={{ color: '#475569' }}>{m.memo}</span>
+                    <div key={i} style={S.noteItem}>
+                      <div style={S.noteHeader}>
+                        <span style={S.noteDate}>{formatDate(m.date)}</span>
+                        {m.author && <span style={S.noteType}>{m.author}</span>}
+                      </div>
+                      <div style={S.noteContent}>{m.memo}</div>
                     </div>
                   ))}
                 </div>
