@@ -313,14 +313,18 @@ export default function MedicalOpinion() {
                 <span style={S.dataLabel}>차트번호</span>
                 <span>{opinionData.basic.chartNo}</span>
               </div>
-              <div style={S.dataRow}>
-                <span style={S.dataLabel}>입원일</span>
-                <span>{formatDate(selectedAdmission.admitDate)}</span>
-              </div>
-              <div style={S.dataRow}>
-                <span style={S.dataLabel}>퇴원일</span>
-                <span>{selectedAdmission.dischargeDate ? formatDate(selectedAdmission.dischargeDate) : '입원 중'}</span>
-              </div>
+              {selectedAdmission && (
+                <>
+                  <div style={S.dataRow}>
+                    <span style={S.dataLabel}>입원일</span>
+                    <span>{formatDate(selectedAdmission.admitDate)}</span>
+                  </div>
+                  <div style={S.dataRow}>
+                    <span style={S.dataLabel}>퇴원일</span>
+                    <span>{selectedAdmission.dischargeDate ? formatDate(selectedAdmission.dischargeDate) : '입원 중'}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 진단명 */}
