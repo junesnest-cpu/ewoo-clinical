@@ -35,7 +35,7 @@ export default function MedicalOpinion() {
     return () => clearTimeout(timer);
   }, [query, selectedPatient]);
 
-  // 환자 선택 시 EMR 데이터 로드 (입원이력 포함)
+  // 환자 선택 시 기본정보 + 입원이력만 로드 (상세 데이터는 입원기간 선택 시)
   const selectPatient = useCallback(async (patient) => {
     setSelectedPatient(patient);
     setQuery(patient.name);
@@ -63,12 +63,14 @@ export default function MedicalOpinion() {
       });
       if (r.ok) {
         const data = await r.json();
-        setOpinionData(data);
-        // 현재 입원 중(퇴원일 없음)이면 자동 선택, 아니면 직전 입원 선택
-        if (data.admissions.length > 0) {
-          const current = data.admissions.find(a => !a.dischargeDate);
-          setSelectedAdmission(current || data.admissions[0]);
-        }
+        // 입원이력만 먼저 표시, 상세 데이터는 입원기간 선택 후 로드
+        setOpinionData({
+          ...data,
+          diagnoses: [],
+          treatments: [],
+          progressNotes: [],
+          prescriptionMemos: [],
+        });
         setLoading(false);
         return;
       }
@@ -83,7 +85,7 @@ export default function MedicalOpinion() {
     setLoading(false);
   }, []);
 
-  // 입원기간 선택 시 해당 기간의 치료/경과기록 재조회
+  // 입원기간 선택 시 해당 기간의 진단/치료/경과기록/처방메모 조회
   const selectAdmission = useCallback(async (admission) => {
     setSelectedAdmission(admission);
     if (!selectedPatient?.chartNo || !admission) return;
@@ -104,8 +106,10 @@ export default function MedicalOpinion() {
         const data = await r.json();
         setOpinionData(prev => ({
           ...prev,
+          diagnoses: data.diagnoses || prev.diagnoses,
           treatments: data.treatments,
           progressNotes: data.progressNotes,
+          prescriptionMemos: data.prescriptionMemos || prev.prescriptionMemos,
         }));
       }
     } catch (e) {
@@ -126,18 +130,23 @@ export default function MedicalOpinion() {
     inputRef.current?.focus();
   };
 
-  // AI 소견서 내용 생성
+  // AI 소견서 내용 생성 — 선택된 입원기간 데이터만 전달
   const generateDraft = async () => {
     if (!opinionData) return;
     setGenerating(true);
     setError('');
     try {
+      // 선택된 입원기간만 포함하여 AI에 전달
+      const dataForAI = {
+        ...opinionData,
+        admissions: selectedAdmission ? [selectedAdmission] : opinionData.admissions,
+      };
       const r = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           formType: 'medical_opinion',
-          patientData: opinionData,
+          patientData: dataForAI,
         }),
       });
       if (!r.ok) throw new Error('생성 실패');
@@ -241,8 +250,43 @@ export default function MedicalOpinion() {
       {loading && <div style={S.loadingBar}>EMR 데이터 조회 중...</div>}
       {error && <div style={S.errorBar}>{error}</div>}
 
-      {/* EMR 데이터 요약 */}
-      {opinionData && (
+      {/* 1단계: 입원기간 선택 */}
+      {opinionData && opinionData.admissions.length > 0 && (
+        <div style={S.section}>
+          <div style={S.sectionTitle}>입원기간 선택</div>
+          <div style={S.admissionList}>
+            {opinionData.admissions.map((a, i) => {
+              const isSelected = selectedAdmission?.admitDate === a.admitDate;
+              const isCurrent = !a.dischargeDate;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    ...S.admissionItem,
+                    background: isSelected ? '#ede9fe' : '#f8fafc',
+                    borderColor: isSelected ? '#7c3aed' : '#e2e8f0',
+                  }}
+                  onClick={() => !isSelected && selectAdmission(a)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: isSelected ? '#7c3aed' : '#1e293b' }}>
+                      {formatDate(a.admitDate)} ~ {isCurrent ? '현재' : formatDate(a.dischargeDate)}
+                    </span>
+                    {isCurrent && <span style={S.currentBadge}>입원중</span>}
+                  </div>
+                  {isSelected && <span style={{ color: '#7c3aed', fontSize: 14, fontWeight: 700 }}>선택됨</span>}
+                </div>
+              );
+            })}
+          </div>
+          {!selectedAdmission && (
+            <div style={S.admissionHint}>입원기간을 선택하면 해당 기간의 진단·치료·경과기록을 불러옵니다</div>
+          )}
+        </div>
+      )}
+
+      {/* 2단계: 선택된 입원기간의 EMR 데이터 요약 (입원이력 없는 환자는 바로 표시) */}
+      {opinionData && (selectedAdmission || opinionData.admissions.length === 0) && (
         <>
           <div style={S.dataGrid}>
             {/* 환자 정보 */}
@@ -256,51 +300,17 @@ export default function MedicalOpinion() {
                 <span style={S.dataLabel}>차트번호</span>
                 <span>{opinionData.basic.chartNo}</span>
               </div>
-              {selectedAdmission && (
-                <>
-                  <div style={S.dataRow}>
-                    <span style={S.dataLabel}>입원일</span>
-                    <span>{formatDate(selectedAdmission.admitDate)}</span>
-                  </div>
-                  <div style={S.dataRow}>
-                    <span style={S.dataLabel}>퇴원일</span>
-                    <span>{selectedAdmission.dischargeDate ? formatDate(selectedAdmission.dischargeDate) : '입원 중'}</span>
-                  </div>
-                </>
-              )}
+              <div style={S.dataRow}>
+                <span style={S.dataLabel}>입원일</span>
+                <span>{formatDate(selectedAdmission.admitDate)}</span>
+              </div>
+              <div style={S.dataRow}>
+                <span style={S.dataLabel}>퇴원일</span>
+                <span>{selectedAdmission.dischargeDate ? formatDate(selectedAdmission.dischargeDate) : '입원 중'}</span>
+              </div>
             </div>
 
-            {/* 입원기간 선택 */}
-            {opinionData.admissions.length > 0 && (
-              <div style={S.dataCard}>
-                <div style={S.dataCardTitle}>입원기간 선택</div>
-                {opinionData.admissions.map((a, i) => {
-                  const isSelected = selectedAdmission?.admitDate === a.admitDate;
-                  const isCurrent = !a.dischargeDate;
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        ...S.admissionItem,
-                        background: isSelected ? '#ede9fe' : '#f8fafc',
-                        borderColor: isSelected ? '#7c3aed' : '#e2e8f0',
-                      }}
-                      onClick={() => !isSelected && selectAdmission(a)}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontWeight: 600, fontSize: 14, color: isSelected ? '#7c3aed' : '#1e293b' }}>
-                          {formatDate(a.admitDate)} ~ {isCurrent ? '현재' : formatDate(a.dischargeDate)}
-                        </span>
-                        {isCurrent && <span style={S.currentBadge}>입원중</span>}
-                      </div>
-                      {isSelected && <span style={{ color: '#7c3aed', fontSize: 14, fontWeight: 700 }}>선택됨</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* 진단명 + 처방메모 (같은 행, 50/50) */}
+            {/* 진단명 */}
             <div style={S.dataCard}>
               <div style={S.dataCardTitle}>진단명</div>
               {opinionData.diagnoses.length > 0 ? (
@@ -315,6 +325,7 @@ export default function MedicalOpinion() {
               )}
             </div>
 
+            {/* 처방메모 */}
             <div style={S.dataCard}>
               <div style={S.dataCardTitle}>처방메모 ({opinionData.prescriptionMemos?.length || 0}건)</div>
               {opinionData.prescriptionMemos?.length > 0 ? (
@@ -528,10 +539,18 @@ const S = {
   },
   emptyText: { color: '#94a3b8', fontSize: 13, fontStyle: 'italic' },
 
+  admissionList: {
+    display: 'flex', flexDirection: 'column', gap: 6,
+  },
   admissionItem: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     padding: '10px 12px', borderRadius: 8, border: '1.5px solid #e2e8f0',
-    marginBottom: 6, cursor: 'pointer', transition: 'all 0.15s',
+    cursor: 'pointer', transition: 'all 0.15s',
+  },
+  admissionHint: {
+    marginTop: 10, fontSize: 13, color: '#7c3aed', fontWeight: 600,
+    background: '#f5f3ff', padding: '10px 14px', borderRadius: 8,
+    textAlign: 'center',
   },
   currentBadge: {
     background: '#dcfce7', color: '#16a34a', fontSize: 11, fontWeight: 700,
