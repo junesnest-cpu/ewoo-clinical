@@ -189,6 +189,102 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(401); res.end('{"error":"unauthorized"}'); return;
   }
 
+  // 진단용: 특정 환자의 메모/노트 데이터가 있는 테이블 조사
+  if (req.method === 'POST' && req.url === '/api/emr/find-memos') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { chartNo } = JSON.parse(body);
+        if (!chartNo) { res.writeHead(400); res.end('{"error":"chartNo required"}'); return; }
+        const p = await poolReady;
+        const ocs = await ocsReady;
+        const results = {};
+
+        // BrWonmu에서 메모/노트 관련 테이블 검색
+        const tables = await p.request().query(
+          `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+           WHERE TABLE_TYPE='BASE TABLE'
+             AND (TABLE_NAME LIKE '%memo%' OR TABLE_NAME LIKE '%note%'
+               OR TABLE_NAME LIKE '%Memo%' OR TABLE_NAME LIKE '%Note%'
+               OR TABLE_NAME LIKE '%MEMO%' OR TABLE_NAME LIKE '%NOTE%'
+               OR TABLE_NAME LIKE '%ref%' OR TABLE_NAME LIKE '%Ref%'
+               OR TABLE_NAME LIKE '%conv%' OR TABLE_NAME LIKE '%word%'
+               OR TABLE_NAME LIKE '%text%' OR TABLE_NAME LIKE '%remark%')
+           ORDER BY TABLE_NAME`
+        );
+        results.brWonmuMemoTables = tables.recordset.map(r => r.TABLE_NAME);
+
+        // BrOcs에서 메모/노트 관련 테이블 검색
+        const ocsTables = await ocs.request().query(
+          `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+           WHERE TABLE_TYPE='BASE TABLE'
+             AND (TABLE_NAME LIKE '%memo%' OR TABLE_NAME LIKE '%note%'
+               OR TABLE_NAME LIKE '%Memo%' OR TABLE_NAME LIKE '%Note%'
+               OR TABLE_NAME LIKE '%MEMO%' OR TABLE_NAME LIKE '%NOTE%'
+               OR TABLE_NAME LIKE '%conv%' OR TABLE_NAME LIKE '%word%'
+               OR TABLE_NAME LIKE '%text%' OR TABLE_NAME LIKE '%remark%')
+           ORDER BY TABLE_NAME`
+        );
+        results.brOcsMemoTables = ocsTables.recordset.map(r => r.TABLE_NAME);
+
+        // 각 테이블에서 해당 환자의 데이터 건수 확인
+        results.patientData = {};
+        const allTables = [
+          ...results.brWonmuMemoTables.map(t => ({ db: 'BrWonmu', table: t, pool: p })),
+          ...results.brOcsMemoTables.map(t => ({ db: 'BrOcs', table: t, pool: ocs })),
+        ];
+
+        for (const { db, table, pool: tp } of allTables) {
+          try {
+            // 먼저 cham 관련 컬럼 찾기
+            const cols = await tp.request().query(
+              `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+               WHERE TABLE_NAME='${table}'
+                 AND (COLUMN_NAME LIKE '%cham%' OR COLUMN_NAME LIKE '%chart%'
+                   OR COLUMN_NAME LIKE '%CHAM%' OR COLUMN_NAME LIKE '%CHART%')`
+            );
+            if (cols.recordset.length === 0) continue;
+
+            const chamCol = cols.recordset[0].COLUMN_NAME;
+            const countResult = await tp.request().input('c', chartNo).query(
+              `SELECT COUNT(*) AS cnt FROM [${table}] WHERE RTRIM([${chamCol}])=@c`
+            );
+            const cnt = countResult.recordset[0].cnt;
+            if (cnt > 0) {
+              // 샘플 데이터 가져오기 (최근 5건, 컬럼 구조 파악용)
+              const sample = await tp.request().input('c', chartNo).query(
+                `SELECT TOP 5 * FROM [${table}] WHERE RTRIM([${chamCol}])=@c ORDER BY 1 DESC`
+              );
+              results.patientData[`${db}.${table}`] = {
+                count: cnt,
+                chamColumn: chamCol,
+                columns: Object.keys(sample.recordset[0] || {}),
+                sample: sample.recordset.map(r => {
+                  // RTF 내용은 잘라서 표시
+                  const row = {};
+                  for (const [k, v] of Object.entries(r)) {
+                    if (typeof v === 'string' && v.length > 200) row[k] = v.slice(0, 200) + '...';
+                    else row[k] = v;
+                  }
+                  return row;
+                }),
+              };
+            }
+          } catch (e) {
+            results.patientData[`${db}.${table}`] = { error: e.message };
+          }
+        }
+
+        res.writeHead(200); res.end(JSON.stringify(results, null, 2));
+      } catch (e) {
+        console.error('Find memos error:', e.message);
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && req.url === '/api/emr/opinion-data') {
     let body = '';
     req.on('data', c => body += c);
