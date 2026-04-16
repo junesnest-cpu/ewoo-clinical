@@ -18,18 +18,43 @@ const API_KEY = 'ewoo-emr-2026';
 
 const SOAP_LABELS = { 0: 'S', 1: 'O', 2: 'A', 3: 'P' };
 
+/** 중괄호 깊이를 고려하여 RTF 그룹 제거 ({\fonttbl ...}, {\colortbl ...} 등) */
+function removeRtfGroup(rtf, keyword) {
+  const idx = rtf.indexOf(keyword);
+  if (idx < 0) return rtf;
+  // keyword 직전의 '{' 찾기
+  let start = rtf.lastIndexOf('{', idx);
+  if (start < 0) return rtf;
+  let depth = 1, i = start + 1;
+  while (i < rtf.length && depth > 0) {
+    if (rtf[i] === '{') depth++;
+    else if (rtf[i] === '}') depth--;
+    i++;
+  }
+  return rtf.slice(0, start) + rtf.slice(i);
+}
+
 /** RTF(EUC-KR \'xx 시퀀스) → 텍스트 변환 */
 function decodeRtf(rtf) {
   if (!rtf) return '';
-  // \'xx 시퀀스를 바이트 배열로 변환 후 EUC-KR 디코딩
-  // 먼저 \par → \n, RTF 명령어 제거
-  let text = rtf
-    .replace(/\{[^{}]*\{[^{}]*\}[^{}]*\}/g, '')  // 중첩 헤더 {...{...}...} 제거
+
+  // 1) RTF 헤더 그룹 제거 (폰트테이블, 색상테이블, 스타일시트 등)
+  let text = rtf;
+  text = removeRtfGroup(text, '\\fonttbl');
+  text = removeRtfGroup(text, '\\colortbl');
+  text = removeRtfGroup(text, '\\stylesheet');
+  // {\*\...} destination 그룹 제거
+  text = text.replace(/\{\\\*\\[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, '');
+  // 나머지 중첩 헤더 제거
+  text = text.replace(/\{[^{}]*\{[^{}]*\}[^{}]*\}/g, '');
+
+  // 2) RTF 명령어 → 텍스트
+  text = text
     .replace(/\\par\b\s?/g, '\n')
     .replace(/\\[a-z]+\d*\s?/gi, '')
     .replace(/[{}]/g, '');
 
-  // \'xx 시퀀스를 EUC-KR 디코딩
+  // 3) \'xx 시퀀스를 EUC-KR 디코딩
   const parts = text.split(/((?:\\'[0-9a-f]{2})+)/gi);
   let result = '';
   for (const part of parts) {
@@ -326,6 +351,113 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
       }
     });
+    return;
+  }
+
+  // 병동 라운딩 요약 — 전체 입원환자 데이터를 SQL 3건으로 벌크 조회
+  if (req.method === 'GET' && req.url === '/api/emr/rounding-summary') {
+    try {
+      const p = await poolReady;
+      const ocs = await ocsReady;
+
+      // 1) 현재 입원환자 목록 + 기본정보 + 주치의 + 주상병(주소증)
+      const bedResult = await p.request().query(`
+        WITH mainDiag AS (
+          SELECT i.idis_cham, d.dism_h_name,
+            ROW_NUMBER() OVER (PARTITION BY i.idis_cham ORDER BY i.idis_s_date DESC) AS rn
+          FROM Widis i
+          JOIN Wdism d ON RTRIM(i.idis_dism)=RTRIM(d.dism_key)
+        )
+        SELECT
+          b.bedm_cham AS chartNo,
+          b.bedm_dong AS dong, b.bedm_room AS room, b.bedm_key AS bedKey,
+          b.bedm_in_date AS admitDate,
+          v.chamWhanja AS name,
+          v.chamJumin1 AS jumin,
+          v.dctrName AS doctor,
+          md.dism_h_name AS diagName
+        FROM Wbedm b
+        LEFT JOIN VIEWJUBLIST v ON v.chamKey = b.bedm_cham
+        LEFT JOIN mainDiag md ON md.idis_cham = b.bedm_cham AND md.rn = 1
+        WHERE b.bedm_cham IS NOT NULL AND b.bedm_cham <> ''
+        ORDER BY b.bedm_dong, b.bedm_room, b.bedm_key
+      `);
+
+      const chartNos = bedResult.recordset.map(r => String(r.chartNo).trim()).filter(Boolean);
+      if (!chartNos.length) { res.writeHead(200); res.end(JSON.stringify({ patients: [] })); return; }
+
+      // 2) 최근 SOAP S (각 환자별 최신 1건, SQL 1건으로 벌크)
+      const soapMap = {};
+      try {
+        const inList = chartNos.map(c => `'${c}'`).join(',');
+        const soapResult = await ocs.request().query(`
+          SELECT x.note_cham, x.note_date, x.rtf FROM (
+            SELECT note_cham, note_date,
+              CAST(note_contentsRTF AS VARCHAR(4000)) AS rtf,
+              ROW_NUMBER() OVER (PARTITION BY note_cham ORDER BY note_date DESC, note_time DESC) AS rn
+            FROM Onote WHERE note_gubun = 0 AND RTRIM(note_cham) IN (${inList})
+          ) x WHERE x.rn = 1
+        `);
+        for (const r of soapResult.recordset) {
+          soapMap[String(r.note_cham).trim()] = { date: (r.note_date || '').trim(), text: decodeRtf(r.rtf) };
+        }
+      } catch (e) { console.error('Rounding SOAP error:', e.message); }
+
+      // 3) 최근 업무메모 (각 환자별 최신 1건, SQL 1건으로 벌크)
+      const memoMap = {};
+      try {
+        const inList = chartNos.map(c => `'${c}'`).join(',');
+        const wmResult = await ocs.request().query(`
+          SELECT x.workmemo_cham, x.dt, x.memo, x.author FROM (
+            SELECT workmemo_cham, workmemo_date AS dt, workmemo_memo AS memo,
+              workmemo_user AS author,
+              ROW_NUMBER() OVER (PARTITION BY workmemo_cham ORDER BY workmemo_date DESC, workmemo_cnt DESC) AS rn
+            FROM Oworkmemo
+            WHERE LTRIM(RTRIM(workmemo_memo)) != '' AND RTRIM(workmemo_cham) IN (${inList})
+          ) x WHERE x.rn = 1
+        `);
+        for (const r of wmResult.recordset) {
+          memoMap[String(r.workmemo_cham).trim()] = { date: (r.dt || '').trim(), memo: (r.memo || '').trim(), author: (r.author || '').trim() };
+        }
+      } catch (e) { console.error('Rounding workMemo error:', e.message); }
+
+      // 4) 병합
+      const ROOM_MAP = {
+        1:'201', 2:'202', 3:'203', 4:'204', 5:'205', 6:'206',
+        7:'301', 8:'302', 9:'303',10:'304',11:'305',12:'306',
+       13:'501',14:'502',15:'503',16:'504',17:'505',18:'506',
+       19:'601',20:'602',21:'603',
+      };
+
+      const patients = bedResult.recordset.map(r => {
+        const c = String(r.chartNo).trim();
+        const roomLabel = ROOM_MAP[r.room] || `${r.dong}0${r.room}`;
+        // 주치의: 강국형/이숙경만 인정
+        const rawDoc = (r.doctor || '').trim();
+        let attending = '';
+        if (rawDoc.includes('강국형')) attending = '강국형';
+        else if (rawDoc.includes('이숙경')) attending = '이숙경';
+
+        return {
+          chartNo: c,
+          name: (r.name || '').trim(),
+          dong: String(roomLabel).charAt(0),
+          roomLabel,
+          bed: r.bedKey,
+          admitDate: (r.admitDate || '').trim(),
+          jumin: (r.jumin || '').trim(),
+          attending,
+          diagName: (r.diagName || '').trim(),
+          soapS: soapMap[c] || null,
+          workMemo: memoMap[c] || null,
+        };
+      });
+
+      res.writeHead(200); res.end(JSON.stringify({ patients }));
+    } catch (e) {
+      console.error('Rounding summary error:', e.message);
+      res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+    }
     return;
   }
 
