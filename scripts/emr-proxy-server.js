@@ -146,6 +146,48 @@ async function getOpinionData(chartNo, admitDate, dischargeDate) {
       .sort((a, b) => b.date.localeCompare(a.date));
   } catch (e) { console.error('SOAP query error:', e.message); }
 
+  // 경과기록 메모 (BrOcs.Onotem) — 주치의 요약 메모
+  let doctorMemo = [];
+  try {
+    const ocs = await ocsReady;
+    const notemResult = await ocs.request().input('c', chartNo).query(
+      `SELECT notem_date AS dt, notem_user AS author, notem_time AS tm,
+         CAST(notem_contentsRTF AS VARCHAR(MAX)) AS rtf
+       FROM Onotem WHERE notem_cham=@c ORDER BY notem_date DESC`
+    );
+    doctorMemo = notemResult.recordset
+      .map(r => {
+        const text = decodeRtf(r.rtf);
+        return text ? {
+          date: (r.dt || '').trim(),
+          author: (r.author || '').trim(),
+          content: text,
+        } : null;
+      })
+      .filter(Boolean);
+  } catch (e) { console.error('Onotem query error:', e.message); }
+
+  // 업무메모 (BrOcs.Oworkmemo) — 입원기간으로 필터
+  let workMemos = [];
+  try {
+    const ocs = await ocsReady;
+    const wmReq = ocs.request().input('c', chartNo);
+    let wmQuery = `SELECT workmemo_date AS dt, workmemo_indate AS indate,
+       workmemo_cnt AS cnt, workmemo_memo AS memo, workmemo_user AS author
+     FROM Oworkmemo WHERE workmemo_cham=@c AND LTRIM(RTRIM(workmemo_memo)) != ''`;
+    if (dateFrom) {
+      wmReq.input('wdf', dateFrom).input('wdt', dateTo);
+      wmQuery += ` AND workmemo_date >= @wdf AND workmemo_date <= @wdt`;
+    }
+    wmQuery += ` ORDER BY workmemo_date DESC, workmemo_cnt DESC`;
+    const wmResult = await wmReq.query(wmQuery);
+    workMemos = wmResult.recordset.map(r => ({
+      date: (r.dt || '').trim(),
+      memo: (r.memo || '').trim(),
+      author: (r.author || '').trim(),
+    }));
+  } catch (e) { console.error('Oworkmemo query error:', e.message); }
+
   const b = basic.recordset[0] || {};
   return {
     basic: {
@@ -175,6 +217,8 @@ async function getOpinionData(chartNo, admitDate, dischargeDate) {
         author: (r.author || '').trim(),
       })),
     progressNotes: notes,
+    doctorMemo,
+    workMemos,
   };
 }
 

@@ -111,6 +111,8 @@ export default function MedicalOpinion() {
           treatments: data.treatments,
           progressNotes: data.progressNotes,
           prescriptionMemos: data.prescriptionMemos || prev.prescriptionMemos,
+          doctorMemo: data.doctorMemo || prev.doctorMemo,
+          workMemos: data.workMemos || prev.workMemos,
         }));
       }
     } catch (e) {
@@ -353,6 +355,42 @@ export default function MedicalOpinion() {
                 </div>
               ) : (
                 <div style={S.emptyText}>처방메모 없음</div>
+              )}
+            </div>
+
+            {/* 경과기록 메모 (좌) + 업무메모 (우) */}
+            <div style={S.dataCard}>
+              <div style={S.dataCardTitle}>경과기록 메모 ({opinionData.doctorMemo?.length || 0}건)</div>
+              {opinionData.doctorMemo?.length > 0 ? (
+                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  {opinionData.doctorMemo.map((m, i) => (
+                    <div key={i} style={S.noteItem}>
+                      <div style={S.noteHeader}>
+                        <span style={S.noteDate}>{formatDate(m.date)}</span>
+                        {m.author && <span style={S.noteType}>{m.author}</span>}
+                      </div>
+                      <div style={{ ...S.noteContent, whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={S.emptyText}>경과기록 메모 없음</div>
+              )}
+            </div>
+
+            <div style={S.dataCard}>
+              <div style={S.dataCardTitle}>업무메모 ({opinionData.workMemos?.length || 0}건)</div>
+              {opinionData.workMemos?.length > 0 ? (
+                <div style={{ maxHeight: 130, overflowY: 'auto' }}>
+                  {opinionData.workMemos.map((m, i) => (
+                    <div key={i} style={{ padding: '3px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                      <span style={S.noteDate}>{formatDate(m.date)}</span>{' '}
+                      <span style={{ color: '#475569' }}>{m.memo}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={S.emptyText}>업무메모 없음</div>
               )}
             </div>
 
