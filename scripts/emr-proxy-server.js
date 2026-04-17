@@ -361,24 +361,26 @@ const server = http.createServer(async (req, res) => {
       const ocs = await ocsReady;
 
       // 1) 현재 입원환자 목록 + 기본정보 + 주치의 + 주상병(주소증)
+      //    OUTER APPLY TOP 1로 환자당 1행 보장
       const bedResult = await p.request().query(`
-        WITH mainDiag AS (
-          SELECT i.idis_cham, d.dism_h_name,
-            ROW_NUMBER() OVER (PARTITION BY i.idis_cham ORDER BY i.idis_s_date DESC) AS rn
-          FROM Widis i
-          JOIN Wdism d ON RTRIM(i.idis_dism)=RTRIM(d.dism_key)
-        )
         SELECT
           b.bedm_cham AS chartNo,
           b.bedm_dong AS dong, b.bedm_room AS room, b.bedm_key AS bedKey,
           b.bedm_in_date AS admitDate,
-          v.chamWhanja AS name,
-          v.chamJumin1 AS jumin,
-          v.dctrName AS doctor,
-          md.dism_h_name AS diagName
+          pv.name, pv.jumin, pv.doctor,
+          md.diagName
         FROM Wbedm b
-        LEFT JOIN VIEWJUBLIST v ON v.chamKey = b.bedm_cham
-        LEFT JOIN mainDiag md ON md.idis_cham = b.bedm_cham AND md.rn = 1
+        OUTER APPLY (
+          SELECT TOP 1 chamWhanja AS name, chamJumin1 AS jumin, dctrName AS doctor
+          FROM VIEWJUBLIST WHERE chamKey = b.bedm_cham
+        ) pv
+        OUTER APPLY (
+          SELECT TOP 1 d.dism_h_name AS diagName
+          FROM Widis i
+          JOIN Wdism d ON RTRIM(i.idis_dism)=RTRIM(d.dism_key)
+          WHERE i.idis_cham = b.bedm_cham
+          ORDER BY i.idis_s_date DESC
+        ) md
         WHERE b.bedm_cham IS NOT NULL AND b.bedm_cham <> ''
         ORDER BY b.bedm_dong, b.bedm_room, b.bedm_key
       `);
