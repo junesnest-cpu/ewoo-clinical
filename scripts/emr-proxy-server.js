@@ -361,6 +361,7 @@ const server = http.createServer(async (req, res) => {
       const ocs = await ocsReady;
 
       // 1) 현재 입원환자 목록 + 기본정보 + 주치의 + 주상병(주소증)
+      //    INSUCLS '50'(퇴원), '100'(일반100) 제외 — ewoo-hospital 병동현황 규칙과 동일
       //    OUTER APPLY TOP 1로 환자당 1행 보장
       const bedResult = await p.request().query(`
         SELECT
@@ -382,6 +383,12 @@ const server = http.createServer(async (req, res) => {
           ORDER BY i.idis_s_date DESC
         ) md
         WHERE b.bedm_cham IS NOT NULL AND b.bedm_cham <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM SILVER_PATIENT_INFO sp
+            WHERE sp.CHARTNO = b.bedm_cham
+              AND sp.INSUCLS IN ('50','100')
+              AND sp.INDAT = (SELECT MAX(INDAT) FROM SILVER_PATIENT_INFO WHERE CHARTNO = b.bedm_cham)
+          )
         ORDER BY b.bedm_dong, b.bedm_room, b.bedm_key
       `);
 
