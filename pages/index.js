@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+
 const MEDICAL_FORMS = [
   { id: 'doctor-rounding',    icon: '🩺', label: '병동 라운딩 체크',   desc: '입원환자 일일 라운딩 체크리스트', color: '#0369a1' },
   { id: 'medical-opinion',    icon: '📄', label: '소견서 작성',       desc: '진단·치료 경과 기반 소견서 생성', color: '#7c3aed' },
@@ -14,19 +16,20 @@ const NURSING_FORMS = [
 ];
 
 export default function Home() {
-  const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [patientCount, setPatientCount] = useState(null);
+
+  const now = new Date();
+  const dateDisplay = `${now.getMonth() + 1}/${now.getDate()} (${DAY_NAMES[now.getDay()]})`;
 
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('/api/emr/patients');
+        const r = await fetch('/api/emr/rounding-summary');
         if (r.ok) {
           const data = await r.json();
-          setPatients(data.patients || []);
+          setPatientCount((data.patients || []).length);
         }
       } catch (e) { console.error(e); }
-      setLoading(false);
     })();
   }, []);
 
@@ -54,16 +57,12 @@ export default function Home() {
         <div style={S.subtitle}>EMR 데이터 기반 의과·간호과 서식 자동화 + AI 요약</div>
         <div style={S.statsBar}>
           <div style={S.stat}>
-            <div style={S.statNum}>{loading ? '...' : patients.length}</div>
+            <div style={S.statNum}>{dateDisplay}</div>
+            <div style={S.statLabel}>오늘</div>
+          </div>
+          <div style={S.stat}>
+            <div style={S.statNum}>{patientCount !== null ? patientCount : '...'}</div>
             <div style={S.statLabel}>현재 입원환자</div>
-          </div>
-          <div style={S.stat}>
-            <div style={S.statNum}>{MEDICAL_FORMS.length + NURSING_FORMS.length}</div>
-            <div style={S.statLabel}>자동화 서식</div>
-          </div>
-          <div style={S.stat}>
-            <div style={S.statNum}>AI</div>
-            <div style={S.statLabel}>Claude 요약</div>
           </div>
         </div>
       </div>
