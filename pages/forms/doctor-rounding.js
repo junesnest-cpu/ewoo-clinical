@@ -231,14 +231,20 @@ export default function DoctorRounding() {
                                 {days && <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 600 }}>{days}</div>}
                               </td>
                               <td style={S.td}>
-                                <div style={S.twoLine} title={p.soapS?.text || ''}>
-                                  {p.soapS ? p.soapS.text || '-' : <span style={S.dash}>-</span>}
-                                </div>
+                                {p.soapS ? (
+                                  <>
+                                    <div style={S.subText}>{formatDate(p.soapS.date)}</div>
+                                    <div style={S.twoLine} title={p.soapS.text || ''}>{p.soapS.text || '-'}</div>
+                                  </>
+                                ) : <span style={S.dash}>-</span>}
                               </td>
                               <td style={S.td}>
-                                <div style={S.twoLine} title={p.workMemo?.memo || ''}>
-                                  {p.workMemo ? p.workMemo.memo || '-' : <span style={S.dash}>-</span>}
-                                </div>
+                                {p.workMemo ? (
+                                  <>
+                                    <div style={S.subText}>{formatDate(p.workMemo.date)}</div>
+                                    <div style={S.twoLine} title={p.workMemo.memo || ''}>{p.workMemo.memo || '-'}</div>
+                                  </>
+                                ) : <span style={S.dash}>-</span>}
                               </td>
                             </tr>
                           );
