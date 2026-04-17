@@ -8,17 +8,18 @@ const FLOOR_LABELS = { '2': '2병동', '3': '3병동', '5': '5병동', '6': '6�
 // 주치의는 강국형, 이숙경 둘 뿐 (김민준/진영문은 협진)
 const ATTENDING_DOCTORS = ['강국형', '이숙경'];
 
-function calcAge(jumin, birthDate) {
+function birthAndAge(jumin, birthDate) {
   const thisYear = new Date().getFullYear();
+  let birthYear = null, age = null;
   if (jumin && jumin.length >= 6) {
     const yy = parseInt(jumin.slice(0, 2), 10);
-    return thisYear - (yy >= 30 ? 1900 + yy : 2000 + yy);
-  }
-  if (birthDate) {
+    birthYear = yy >= 30 ? 1900 + yy : 2000 + yy;
+    age = thisYear - birthYear;
+  } else if (birthDate) {
     const y = parseInt(String(birthDate).slice(0, 4), 10);
-    if (y > 1900) return thisYear - y;
+    if (y > 1900) { birthYear = y; age = thisYear - y; }
   }
-  return null;
+  return { birthYear, age };
 }
 
 function formatDate(d) {
@@ -117,13 +118,9 @@ export default function DoctorRounding() {
     td: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', verticalAlign: 'top', lineHeight: 1.5 },
     roomGap: { height: 8, background: '#f8fafc' },
     name: { fontWeight: 700, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap' },
-    age: { fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' },
     room: { fontSize: 13, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' },
-    diagnosis: { fontSize: 12, color: '#374151', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-    admitDate: { fontSize: 12, color: '#475569', whiteSpace: 'nowrap' },
-    daysTag: { fontSize: 10, color: '#0369a1', background: '#e0f2fe', padding: '1px 5px', borderRadius: 8, marginLeft: 4, fontWeight: 600 },
-    soapS: { fontSize: 12, color: '#374151', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-    workMemo: { fontSize: 12, color: '#374151', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+    twoLine: { fontSize: 12, color: '#374151', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '17px' },
+    subText: { fontSize: 11, color: '#94a3b8', lineHeight: '15px' },
     loading: { textAlign: 'center', padding: 40, color: '#64748b', fontSize: 14 },
     empty: { textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: 14 },
     dash: { color: '#cbd5e1' },
@@ -205,7 +202,7 @@ export default function DoctorRounding() {
                       <React.Fragment key={roomLabel}>
                         {ri > 0 && <tr><td colSpan={7} style={S.roomGap}></td></tr>}
                         {roomPts.map(p => {
-                          const age = calcAge(p.jumin, p.birthDate);
+                          const { birthYear, age } = birthAndAge(p.jumin, p.birthDate);
                           const days = daysFromAdmit(p.admitDate);
 
                           return (
@@ -214,42 +211,33 @@ export default function DoctorRounding() {
                               <td style={S.td}>
                                 <div style={S.name}>{p.name}</div>
                                 {(selectedDoctor === 'all' || showAllPatients) && p.attending && (
-                                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{p.attending}</div>
+                                  <div style={S.subText}>{p.attending}</div>
                                 )}
                                 {!p.attending && (
                                   <div style={{ fontSize: 11, color: '#e11d48' }}>미배정</div>
                                 )}
                               </td>
-                              <td style={{ ...S.td, ...S.age }}>
-                                {age !== null ? `${age}세` : ''}
+                              <td style={S.td}>
+                                {birthYear && <div style={S.subText}>{String(birthYear).slice(2)}년생</div>}
+                                {age !== null && <div style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>{age}세</div>}
                               </td>
                               <td style={S.td}>
-                                <div style={S.diagnosis} title={p.diagName || ''}>
+                                <div style={S.twoLine} title={p.diagName || ''}>
                                   {p.diagName || <span style={S.dash}>-</span>}
                                 </div>
                               </td>
                               <td style={S.td}>
-                                <span style={S.admitDate}>{formatDate(p.admitDate)}</span>
-                                {days && <span style={S.daysTag}>{days}</span>}
+                                <div style={{ fontSize: 12, color: '#475569' }}>{formatDate(p.admitDate)}</div>
+                                {days && <div style={{ fontSize: 11, color: '#0369a1', fontWeight: 600 }}>{days}</div>}
                               </td>
                               <td style={S.td}>
-                                <div style={S.soapS} title={p.soapS?.text || ''}>
-                                  {p.soapS ? (
-                                    <>
-                                      <span style={{ color: '#94a3b8', fontSize: 11 }}>{formatDate(p.soapS.date)}</span>{' '}
-                                      {p.soapS.text || '-'}
-                                    </>
-                                  ) : <span style={S.dash}>-</span>}
+                                <div style={S.twoLine} title={p.soapS?.text || ''}>
+                                  {p.soapS ? p.soapS.text || '-' : <span style={S.dash}>-</span>}
                                 </div>
                               </td>
                               <td style={S.td}>
-                                <div style={S.workMemo} title={p.workMemo?.memo || ''}>
-                                  {p.workMemo ? (
-                                    <>
-                                      <span style={{ color: '#94a3b8', fontSize: 11 }}>{formatDate(p.workMemo.date)}</span>{' '}
-                                      {p.workMemo.memo || '-'}
-                                    </>
-                                  ) : <span style={S.dash}>-</span>}
+                                <div style={S.twoLine} title={p.workMemo?.memo || ''}>
+                                  {p.workMemo ? p.workMemo.memo || '-' : <span style={S.dash}>-</span>}
                                 </div>
                               </td>
                             </tr>
