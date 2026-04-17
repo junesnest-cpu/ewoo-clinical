@@ -121,6 +121,7 @@ export default function DoctorRounding() {
     room: { fontSize: 13, color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' },
     twoLine: { fontSize: 12, color: '#374151', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '17px' },
     subText: { fontSize: 11, color: '#94a3b8', lineHeight: '15px' },
+    dateTag: { fontSize: 10, color: '#94a3b8', background: '#f1f5f9', padding: '1px 4px', borderRadius: 4, marginRight: 4, whiteSpace: 'nowrap' },
     loading: { textAlign: 'center', padding: 40, color: '#64748b', fontSize: 14 },
     empty: { textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: 14 },
     dash: { color: '#cbd5e1' },
@@ -232,18 +233,18 @@ export default function DoctorRounding() {
                               </td>
                               <td style={S.td}>
                                 {p.soapS ? (
-                                  <>
-                                    <div style={S.subText}>{formatDate(p.soapS.date)}</div>
-                                    <div style={S.twoLine} title={p.soapS.text || ''}>{p.soapS.text || '-'}</div>
-                                  </>
+                                  <div style={S.twoLine} title={p.soapS.text || ''}>
+                                    <span style={S.dateTag}>{formatDate(p.soapS.date)}</span>
+                                    {p.soapS.text || '-'}
+                                  </div>
                                 ) : <span style={S.dash}>-</span>}
                               </td>
                               <td style={S.td}>
                                 {p.workMemo ? (
-                                  <>
-                                    <div style={S.subText}>{formatDate(p.workMemo.date)}</div>
-                                    <div style={S.twoLine} title={p.workMemo.memo || ''}>{p.workMemo.memo || '-'}</div>
-                                  </>
+                                  <div style={S.twoLine} title={p.workMemo.memo || ''}>
+                                    <span style={S.dateTag}>{formatDate(p.workMemo.date)}</span>
+                                    {p.workMemo.memo || '-'}
+                                  </div>
                                 ) : <span style={S.dash}>-</span>}
                               </td>
                             </tr>
