@@ -188,7 +188,7 @@ export default function DoctorRounding() {
                   <tr>
                     <th style={{ ...S.th, width: 56 }}>병실</th>
                     <th style={{ ...S.th, width: 80 }}>이름</th>
-                    <th style={{ ...S.th, width: 40 }}>나이</th>
+                    <th style={{ ...S.th, width: 50 }}>나이</th>
                     <th style={{ ...S.th, width: 140 }}>주소증</th>
                     <th style={{ ...S.th, width: 80 }}>입원일</th>
                     <th style={{ ...S.th, minWidth: 160 }}>최근 S</th>
@@ -217,9 +217,9 @@ export default function DoctorRounding() {
                                   <div style={{ fontSize: 11, color: '#e11d48' }}>미배정</div>
                                 )}
                               </td>
-                              <td style={S.td}>
-                                {birthYear && <div style={S.subText}>{String(birthYear).slice(2)}년생</div>}
-                                {age !== null && <div style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>{age}세</div>}
+                              <td style={{ ...S.td, whiteSpace: 'nowrap', fontSize: 12 }}>
+                                {birthYear && <div style={{ color: '#94a3b8', fontSize: 11 }}>{String(birthYear).slice(2)}년생</div>}
+                                {age !== null && <div style={{ color: '#374151', fontWeight: 600 }}>{age}세</div>}
                               </td>
                               <td style={S.td}>
                                 <div style={S.twoLine} title={p.diagName || ''}>
