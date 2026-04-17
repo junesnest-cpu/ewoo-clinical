@@ -396,6 +396,7 @@ const server = http.createServer(async (req, res) => {
       if (!chartNos.length) { res.writeHead(200); res.end(JSON.stringify({ patients: [] })); return; }
 
       // 2) 최근 SOAP S (각 환자별 최신 1건, SQL 1건으로 벌크)
+      //    주치의(강국형=2, 이숙경=5)가 작성한 S만 — 협진(김민준=1, 진영문=3) 제외
       const soapMap = {};
       try {
         const inList = chartNos.map(c => `'${c}'`).join(',');
@@ -404,7 +405,8 @@ const server = http.createServer(async (req, res) => {
             SELECT note_cham, note_date,
               CAST(note_contentsRTF AS VARCHAR(4000)) AS rtf,
               ROW_NUMBER() OVER (PARTITION BY note_cham ORDER BY note_date DESC, note_time DESC) AS rn
-            FROM Onote WHERE note_gubun = 0 AND RTRIM(note_cham) IN (${inList})
+            FROM Onote WHERE note_gubun = 0 AND note_dctr IN (2, 5)
+              AND RTRIM(note_cham) IN (${inList})
           ) x WHERE x.rn = 1
         `);
         for (const r of soapResult.recordset) {
