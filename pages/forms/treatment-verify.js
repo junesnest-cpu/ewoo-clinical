@@ -101,6 +101,7 @@ export default function TreatmentVerify() {
   const [slots, setSlots] = useState({});
   const [treatPlans, setTreatPlans] = useState({});
   const [emrSyncTime, setEmrSyncTime] = useState(null);
+  const [roomSyncTime, setRoomSyncTime] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filterAttending, setFilterAttending] = useState(null);
   const [filterGroup, setFilterGroup] = useState(null);
@@ -109,7 +110,8 @@ export default function TreatmentVerify() {
     const unsubS = onValue(ref(wardDb, "slots"), snap => setSlots(snap.val() || {}));
     const unsubT = onValue(ref(wardDb, "treatmentPlans"), snap => { setTreatPlans(snap.val() || {}); setLoading(false); });
     const unsubE = onValue(ref(wardDb, "emrSyncLog/lastSync"), snap => setEmrSyncTime(snap.val()));
-    return () => { unsubS(); unsubT(); unsubE(); };
+    const unsubR = onValue(ref(wardDb, "roomSyncLog/lastSync"), snap => setRoomSyncTime(snap.val()));
+    return () => { unsubS(); unsubT(); unsubE(); unsubR(); };
   }, []);
 
   // 주 7일 날짜 목록
@@ -128,8 +130,10 @@ export default function TreatmentVerify() {
   // 치료별·환자별 불일치 집계
   const { mismatchEntries, emrSummary, attCounts, unassignedCount } = useMemo(() => {
     // itemId → Map<slotKey::emrType, {..., dates:[]}>
+    // emrType: "plus" | "minus" | "room"
+    //   room:"removed"인 항목은 EMR 검증 대상에서 제외하고 별도 "room" 타입으로 집계
     const byItem = {};
-    const summary = { match:0, plus:0, minus:0 };
+    const summary = { match:0, plus:0, minus:0, room:0 };
     const attendingSet = { "강국형":0, "이숙경":0, "": 0 };
 
     for (const sk of Object.keys(slots)) {
@@ -145,8 +149,12 @@ export default function TreatmentVerify() {
         if (admit && d < admit) continue;
         const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
         if (!items) continue;
+        const isPast = d < today;
         for (const e of items) {
-          const type =
+          // 오늘 이전 날짜의 room:"removed"는 검증 대상에서 완전 제외 (치료실이 최종 진실)
+          if (e.room === "removed" && isPast) continue;
+          // 오늘/미래의 room:"removed"는 "room" 타입으로 별도 표시 (EMR 검증 대상에서는 제외)
+          const type = e.room === "removed" ? "room" :
             e.emr === "match" ? "match" :
             (e.emr === "added" || e.emr === "modified") ? "plus" :
             (e.emr === "removed" || e.emr === "missing") ? "minus" : null;
@@ -251,10 +259,12 @@ export default function TreatmentVerify() {
             <span style={{color:"#10b981"}}>EMR {emrSummary.match}</span>
             <span style={{color:"#3b82f6"}}>EMR+ {emrSummary.plus}</span>
             <span style={{color:"#ef4444"}}>EMR- {emrSummary.minus}</span>
+            {emrSummary.room > 0 && <span style={{color:"#7c2d12"}}>치료실- {emrSummary.room}</span>}
           </div>
         </div>
         <div style={S.syncBox}>
-          EMR 동기화 <strong>{formatSyncAgo(emrSyncTime)}</strong>
+          <div>EMR 동기화 <strong>{formatSyncAgo(emrSyncTime)}</strong></div>
+          <div>치료실 동기화 <strong>{formatSyncAgo(roomSyncTime)}</strong></div>
         </div>
       </div>
 
@@ -323,8 +333,10 @@ export default function TreatmentVerify() {
                         <span style={S.dates}>
                           {p.dates.map(formatDateBadge).join(", ")}
                         </span>
-                        <span style={{...S.badge, background: p.emrType === "plus" ? "#3b82f6" : "#ef4444"}}>
-                          {p.emrType === "plus" ? "EMR+" : "EMR-"}
+                        <span style={{...S.badge, background:
+                          p.emrType === "plus" ? "#3b82f6" :
+                          p.emrType === "room" ? "#7c2d12" : "#ef4444"}}>
+                          {p.emrType === "plus" ? "EMR+" : p.emrType === "room" ? "치료실-" : "EMR-"}
                         </span>
                       </span>
                     ))}
