@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import { useState, useEffect, createContext, useContext } from 'react';
-import { auth, approvalDb } from '../lib/firebaseConfig';
+import { auth, wardAuth, approvalDb } from '../lib/firebaseConfig';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 import { ref, get } from 'firebase/database';
 
@@ -21,10 +21,37 @@ function LoginScreen() {
     if (!name.trim() || !password.trim()) { setError('이름과 비밀번호를 입력해 주세요.'); return; }
     setLoading(true); setError('');
     const email = `${name.trim()}@ewoo.com`;
+
+    const trySignIn = async () => {
+      const [a, w] = await Promise.allSettled([
+        signInWithEmailAndPassword(auth, email, password),
+        signInWithEmailAndPassword(wardAuth, email, password),
+      ]);
+      return { approvalOk: a.status === 'fulfilled', wardOk: w.status === 'fulfilled' };
+    };
+
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      setError('이름 또는 비밀번호가 올바르지 않습니다.');
+      let { approvalOk, wardOk } = await trySignIn();
+      if (!approvalOk && !wardOk) {
+        setError('이름 또는 비밀번호가 올바르지 않습니다.');
+        return;
+      }
+      if (!approvalOk || !wardOk) {
+        const r = await fetch('/api/auth/migrate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        if (!r.ok) {
+          setError('이름 또는 비밀번호가 올바르지 않습니다.');
+          return;
+        }
+        ({ approvalOk, wardOk } = await trySignIn());
+        if (!approvalOk || !wardOk) {
+          setError('로그인 동기화 실패. 잠시 후 다시 시도해 주세요.');
+          return;
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -144,7 +171,7 @@ export default function App({ Component, pageProps }) {
           <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20, lineHeight: 1.6 }}>
             임상서식 시스템은 <b>의과</b>와 <b>간호과</b> 소속만 이용 가능합니다.
           </div>
-          <button onClick={() => signOut(auth)}
+          <button onClick={() => Promise.all([signOut(auth), signOut(wardAuth)])}
             style={{ background: '#0f2744', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
             로그아웃
           </button>
@@ -167,7 +194,7 @@ export default function App({ Component, pageProps }) {
       </Head>
       <div style={{ background: '#0f2744', color: '#94a3b8', fontSize: 11, padding: '4px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
         <span>👤 <b style={{ color: '#e2e8f0' }}>{userName}</b> · {department}</span>
-        <button onClick={() => signOut(auth)}
+        <button onClick={() => Promise.all([signOut(auth), signOut(wardAuth)])}
           style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#e2e8f0', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
           로그아웃
         </button>
