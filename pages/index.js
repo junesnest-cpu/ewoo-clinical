@@ -6,6 +6,7 @@ const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const MEDICAL_FORMS = [
   { id: 'doctor-rounding',    icon: '🩺', label: '병동 라운딩 체크',   desc: '입원환자 일일 라운딩 체크리스트', color: '#0369a1' },
   { id: 'medical-opinion',    icon: '📄', label: '소견서 작성',       desc: '진단·치료 경과 기반 소견서 생성', color: '#7c3aed' },
+  { id: 'treatment-verify',   icon: '✅', label: '치료계획 / EMR 검증', desc: '주간 단위 계획 vs EMR 오더 불일치 확인',   color: '#b45309' },
 ];
 
 const NURSING_FORMS = [
