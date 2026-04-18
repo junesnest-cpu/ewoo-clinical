@@ -57,6 +57,22 @@ function toMK(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}`; }
 function toDK(d) { return String(d.getDate()); }
 function toISOLocal(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 
+function parseAdmitDate(str) {
+  if (!str || str === "미정") return null;
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) { const d = new Date(+iso[1], +iso[2]-1, +iso[3]); d.setHours(0,0,0,0); return d; }
+  const m = str.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m) {
+    const now = new Date();
+    let y = now.getFullYear();
+    const d = new Date(y, +m[1]-1, +m[2]);
+    if (d.getTime() > now.getTime() + 7*24*3600*1000) { d.setFullYear(y-1); }
+    d.setHours(0,0,0,0);
+    return d;
+  }
+  return null;
+}
+
 // 주 시작(월요일)
 function getMonday(d) {
   const x = new Date(d);
@@ -123,7 +139,10 @@ export default function TreatmentVerify() {
       if (filterAttending && attending !== filterAttending) continue;
       attendingSet[attending] = (attendingSet[attending] || 0) + 0;
 
+      const admit = parseAdmitDate(current.admitDate);
+
       for (const d of weekDates) {
+        if (admit && d < admit) continue;
         const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
         if (!items) continue;
         for (const e of items) {
@@ -158,8 +177,10 @@ export default function TreatmentVerify() {
     for (const sk of Object.keys(slots)) {
       const current = slots[sk]?.current;
       if (!current?.name) continue;
+      const admit = parseAdmitDate(current.admitDate);
       let hasWeekPlan = false;
       for (const d of weekDates) {
+        if (admit && d < admit) continue;
         if (treatPlans[sk]?.[toMK(d)]?.[toDK(d)]?.length) { hasWeekPlan = true; break; }
       }
       if (!hasWeekPlan) continue;
