@@ -127,21 +127,20 @@ export default function TreatmentVerify() {
 
   const weekEnd = weekDates[6];
 
-  // 치료별·환자별 불일치 집계
-  const { mismatchEntries, emrSummary, attCounts, unassignedCount } = useMemo(() => {
-    // itemId → Map<slotKey::emrType, {..., dates:[]}>
-    // emrType: "plus" | "minus" | "room"
-    //   room:"removed"인 항목은 EMR 검증 대상에서 제외하고 별도 "room" 타입으로 집계
-    const byItem = {};
+  // 치료별·날짜별 불일치 집계 (매트릭스)
+  const { mismatchMatrix, itemIds, emrSummary, attCounts, unassignedCount } = useMemo(() => {
+    // matrix[itemId][dateISO] = { plus:[], minus:[], room:[] }
+    //   plus  = 치료실입력 미입력 (EMR엔 있는데 치료계획 없음)
+    //   minus = EMR 미반영 (치료계획엔 있는데 EMR 없음)
+    //   room  = 치료실 제거 (오늘/미래만)
+    const matrix = {};
     const summary = { match:0, plus:0, minus:0, room:0 };
-    const attendingSet = { "강국형":0, "이숙경":0, "": 0 };
 
     for (const sk of Object.keys(slots)) {
       const current = slots[sk]?.current;
       if (!current?.name) continue;
       const attending = current?.attending || "";
       if (filterAttending && attending !== filterAttending) continue;
-      attendingSet[attending] = (attendingSet[attending] || 0) + 0;
 
       const admit = parseAdmitDate(current.admitDate);
 
@@ -150,10 +149,9 @@ export default function TreatmentVerify() {
         const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
         if (!items) continue;
         const isPast = d < today;
+        const dateISO = toISOLocal(d);
         for (const e of items) {
-          // 오늘 이전 날짜의 room:"removed"는 검증 대상에서 완전 제외 (치료실이 최종 진실)
           if (e.room === "removed" && isPast) continue;
-          // 오늘/미래의 room:"removed"는 "room" 타입으로 별도 표시 (EMR 검증 대상에서는 제외)
           const type = e.room === "removed" ? "room" :
             e.emr === "match" ? "match" :
             (e.emr === "added" || e.emr === "modified") ? "plus" :
@@ -165,17 +163,13 @@ export default function TreatmentVerify() {
             const grp = TREATMENT_GROUPS.find(g => g.group === filterGroup);
             if (!grp || !grp.items.some(i => i.id === e.id)) continue;
           }
-          if (!byItem[e.id]) byItem[e.id] = {};
-          const key = `${sk}::${type}`;
-          if (!byItem[e.id][key]) {
-            const [rid, bed] = sk.split("-");
-            byItem[e.id][key] = {
-              slotKey: sk, roomId: rid, bedNum: bed,
-              patientName: current.name, attending,
-              emrType: type, dates: [],
-            };
-          }
-          byItem[e.id][key].dates.push(toISOLocal(d));
+          if (!matrix[e.id]) matrix[e.id] = {};
+          if (!matrix[e.id][dateISO]) matrix[e.id][dateISO] = { plus:[], minus:[], room:[] };
+          const [rid, bed] = sk.split("-");
+          matrix[e.id][dateISO][type].push({
+            slotKey: sk, roomId: rid, bedNum: bed,
+            patientName: current.name, attending,
+          });
         }
       }
     }
@@ -197,13 +191,19 @@ export default function TreatmentVerify() {
     }
 
     const itemOrder = Object.fromEntries(ALL_ITEMS.map((it, i) => [it.id, i]));
-    const entries = Object.entries(byItem).map(([itemId, pmap]) => {
-      const pats = Object.values(pmap).sort((a,b) => a.roomId.localeCompare(b.roomId));
-      return [itemId, pats];
-    }).sort((a, b) => (itemOrder[a[0]] ?? 999) - (itemOrder[b[0]] ?? 999));
+    // 셀 내부 환자 배열은 병실순으로 정렬
+    for (const itemId of Object.keys(matrix)) {
+      for (const dk of Object.keys(matrix[itemId])) {
+        for (const kind of ["plus","minus","room"]) {
+          matrix[itemId][dk][kind].sort((a,b) => a.roomId.localeCompare(b.roomId));
+        }
+      }
+    }
+    const sortedIds = Object.keys(matrix).sort((a, b) => (itemOrder[a] ?? 999) - (itemOrder[b] ?? 999));
 
     return {
-      mismatchEntries: entries,
+      mismatchMatrix: matrix,
+      itemIds: sortedIds,
       emrSummary: summary,
       attCounts: [
         { att:"강국형", count: fullAtt["강국형"].size },
@@ -211,16 +211,16 @@ export default function TreatmentVerify() {
       ].filter(a => a.count > 0),
       unassignedCount: fullAtt[""].size,
     };
-  }, [slots, treatPlans, weekDates, filterAttending, filterGroup]);
+  }, [slots, treatPlans, weekDates, filterAttending, filterGroup, today]);
 
   const filterGroupCandidates = useMemo(() => {
     const set = new Set();
-    for (const [itemId] of mismatchEntries) {
+    for (const itemId of itemIds) {
       const grp = TREATMENT_GROUPS.find(g => g.items.some(i => i.id === itemId));
       if (grp) set.add(grp.group);
     }
     return TREATMENT_GROUPS.filter(g => set.has(g.group));
-  }, [mismatchEntries]);
+  }, [itemIds]);
 
   const prevWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate()-7); setWeekStart(d); };
   const nextWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate()+7); setWeekStart(d); };
@@ -229,10 +229,7 @@ export default function TreatmentVerify() {
   const isThisWeek = weekStart.getTime() === getMonday(today).getTime();
   const weekLabel = `${weekStart.getMonth()+1}/${weekStart.getDate()}(${DAY_KO[weekStart.getDay()]}) ~ ${weekEnd.getMonth()+1}/${weekEnd.getDate()}(${DAY_KO[weekEnd.getDay()]})`;
 
-  const formatDateBadge = (iso) => {
-    const d = new Date(iso + "T00:00:00");
-    return `${d.getMonth()+1}/${d.getDate()}`;
-  };
+  const isSameDay = (a, b) => a.getTime() === b.getTime();
 
   return (
     <div style={S.page}>
@@ -253,7 +250,7 @@ export default function TreatmentVerify() {
       <div style={S.topBar}>
         <div style={S.totalBox}>
           <div style={S.totalMain}>
-            <strong style={{color:"#0ea5e9", fontSize:20}}>{mismatchEntries.length}</strong>개 치료 불일치
+            <strong style={{color:"#0ea5e9", fontSize:20}}>{itemIds.length}</strong>개 치료 불일치
           </div>
           <div style={S.totalSub}>
             <span style={{color:"#10b981"}}>EMR {emrSummary.match}</span>
@@ -308,46 +305,125 @@ export default function TreatmentVerify() {
       <main style={S.main}>
         {loading ? (
           <div style={S.empty}>불러오는 중...</div>
-        ) : mismatchEntries.length === 0 ? (
+        ) : itemIds.length === 0 ? (
           <div style={S.empty}>이 주는 불일치 항목이 없습니다. ✓</div>
         ) : (
-          <div style={S.list}>
-            {mismatchEntries.map(([itemId, patients]) => {
-              const item = ALL_ITEMS.find(i => i.id === itemId);
-              const grp = TREATMENT_GROUPS.find(g => g.items.some(i => i.id === itemId));
-              return (
-                <div key={itemId} style={S.row}>
-                  <span style={{...S.itemName, color: grp?.color, background: grp?.bg, borderColor: grp?.color}}>
-                    {item?.name || itemId}
-                  </span>
-                  <div style={S.patWrap}>
-                    {patients.map((p, idx) => (
-                      <span key={`${p.slotKey}-${p.emrType}-${idx}`} style={S.chip}>
-                        <span style={S.room}>{p.roomId}-{p.bedNum}</span>
-                        <span style={S.name}>{p.patientName}</span>
-                        {p.attending && ATT_COLORS[p.attending] && (
-                          <span style={{...S.att, background: ATT_COLORS[p.attending].bg, color: ATT_COLORS[p.attending].fg, borderColor: ATT_COLORS[p.attending].border}}>
-                            {p.attending}
-                          </span>
-                        )}
-                        <span style={S.dates}>
-                          {p.dates.map(formatDateBadge).join(", ")}
-                        </span>
-                        <span style={{...S.badge, background:
-                          p.emrType === "plus" ? "#3b82f6" :
-                          p.emrType === "room" ? "#7c2d12" : "#ef4444"}}>
-                          {p.emrType === "plus" ? "EMR+" : p.emrType === "room" ? "치료실-" : "EMR-"}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+          <div style={S.tableWrap}>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={S.thCorner}>치료</th>
+                  {weekDates.map((d, i) => {
+                    const isToday = isSameDay(d, today);
+                    const isPast = d < today;
+                    const dow = d.getDay();
+                    return (
+                      <th key={i} style={{
+                        ...S.thDate,
+                        ...(isToday ? S.thToday : {}),
+                        ...(isPast && !isToday ? S.thPast : {}),
+                        ...(dow === 0 ? { color:"#dc2626" } : dow === 6 ? { color:"#2563eb" } : {}),
+                      }}>
+                        <div style={S.thDateNum}>{d.getMonth()+1}/{d.getDate()}</div>
+                        <div style={S.thDay}>({DAY_KO[dow]})</div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {itemIds.map(itemId => {
+                  const item = ALL_ITEMS.find(i => i.id === itemId);
+                  const grp = TREATMENT_GROUPS.find(g => g.items.some(i => i.id === itemId));
+                  return (
+                    <tr key={itemId}>
+                      <td style={{...S.tdItem, color: grp?.color, background: grp?.bg, borderLeftColor: grp?.color}}>
+                        {item?.name || itemId}
+                      </td>
+                      {weekDates.map((d, i) => {
+                        const dateISO = toISOLocal(d);
+                        const cell = mismatchMatrix[itemId]?.[dateISO];
+                        const isToday = isSameDay(d, today);
+                        const isPast = d < today;
+                        return (
+                          <td key={i} style={{
+                            ...S.tdCell,
+                            ...(isToday ? S.tdCellToday : {}),
+                            ...(isPast && !isToday ? S.tdCellPast : {}),
+                          }}>
+                            {cell && (cell.plus.length > 0 || cell.minus.length > 0 || cell.room.length > 0) ? (
+                              <div style={S.cellStack}>
+                                {cell.plus.length > 0 && (
+                                  <div style={S.cellSectionPlus}>
+                                    {cell.plus.map((p, idx) => (
+                                      <PatChip key={`p${idx}`} p={p} type="plus" />
+                                    ))}
+                                  </div>
+                                )}
+                                {cell.room.length > 0 && (
+                                  <div style={S.cellSectionRoom}>
+                                    {cell.room.map((p, idx) => (
+                                      <PatChip key={`r${idx}`} p={p} type="room" />
+                                    ))}
+                                  </div>
+                                )}
+                                {cell.minus.length > 0 && (
+                                  <div style={S.cellSectionMinus}>
+                                    {cell.minus.map((p, idx) => (
+                                      <PatChip key={`m${idx}`} p={p} type="minus" />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div style={S.legend}>
+              <span style={{...S.legendItem, background:"#dbeafe", color:"#1e40af", borderColor:"#60a5fa"}}>
+                위 · 치료실입력 미입력 (EMR+)
+              </span>
+              <span style={{...S.legendItem, background:"#fee2e2", color:"#991b1b", borderColor:"#fca5a5"}}>
+                아래 · EMR 미반영 (EMR-)
+              </span>
+              {emrSummary.room > 0 && (
+                <span style={{...S.legendItem, background:"#fef3c7", color:"#92400e", borderColor:"#fbbf24"}}>
+                  치료실 제거
+                </span>
+              )}
+            </div>
           </div>
         )}
       </main>
     </div>
+  );
+}
+
+function PatChip({ p, type }) {
+  const bg = type === "plus" ? "#dbeafe" : type === "room" ? "#fef3c7" : "#fee2e2";
+  const fg = type === "plus" ? "#1e40af" : type === "room" ? "#92400e" : "#991b1b";
+  const bd = type === "plus" ? "#60a5fa" : type === "room" ? "#fbbf24" : "#fca5a5";
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:3, background:bg, color:fg,
+      border:`1px solid ${bd}`, borderRadius:5, padding:"1px 4px", fontSize:10, fontWeight:700, lineHeight:1.3 }}>
+      <span style={{ background:fg, color:"#fff", borderRadius:3, padding:"0 3px", fontSize:9 }}>
+        {p.roomId}-{p.bedNum}
+      </span>
+      <span>{p.patientName}</span>
+      {p.attending && ATT_COLORS[p.attending] && (
+        <span style={{
+          background: ATT_COLORS[p.attending].fg, color:"#fff",
+          borderRadius:3, padding:"0 3px", fontSize:8, fontWeight:800
+        }}>
+          {p.attending[0]}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -376,14 +452,33 @@ const S = {
 
   main: { padding:"20px" },
   empty: { textAlign:"center", color:"#94a3b8", fontSize:15, marginTop:60 },
-  list: { display:"flex", flexDirection:"column", gap:8, background:"#fffbeb", border:"1.5px solid #fbbf24", borderRadius:10, padding:"14px 16px" },
-  row: { display:"flex", alignItems:"flex-start", gap:10, flexWrap:"wrap" },
-  itemName: { flexShrink:0, minWidth:140, fontSize:12, fontWeight:800, borderRadius:6, padding:"6px 12px", border:"1.5px solid", textAlign:"center" },
-  patWrap: { display:"flex", flexWrap:"wrap", gap:6, flex:1 },
-  chip: { display:"inline-flex", alignItems:"center", gap:5, background:"#fff", border:"1px solid #fde68a", borderRadius:8, padding:"4px 9px", fontSize:12, fontWeight:700, color:"#0f172a" },
-  room: { background:"#0f2744", color:"#fff", borderRadius:4, padding:"1px 6px", fontSize:10, fontWeight:700 },
-  name: { fontSize:12, fontWeight:800 },
-  att: { fontSize:10, fontWeight:800, borderRadius:4, padding:"1px 5px", border:"1px solid" },
-  dates: { fontSize:10, color:"#78716c", fontWeight:700 },
-  badge: { color:"#fff", fontSize:10, fontWeight:800, borderRadius:4, padding:"1px 6px", letterSpacing:0.2 },
+
+  tableWrap: { overflowX:"auto", background:"#fff", borderRadius:10, border:"1px solid #e2e8f0", boxShadow:"0 1px 3px rgba(0,0,0,0.04)" },
+  table: { width:"100%", borderCollapse:"separate", borderSpacing:0, minWidth:720 },
+  thCorner: { position:"sticky", left:0, top:0, zIndex:3, background:"#0f2744", color:"#fff",
+    fontSize:12, fontWeight:800, padding:"10px 12px", textAlign:"center", borderBottom:"2px solid #0f2744",
+    minWidth:130, width:130 },
+  thDate: { position:"sticky", top:0, zIndex:2, background:"#0f2744", color:"#e2e8f0",
+    fontSize:12, fontWeight:700, padding:"8px 4px", textAlign:"center",
+    borderLeft:"1px solid rgba(255,255,255,0.15)", borderBottom:"2px solid #0f2744", minWidth:110 },
+  thToday: { background:"#0369a1", color:"#fff" },
+  thPast: { background:"#334155", color:"#cbd5e1" },
+  thDateNum: { fontSize:13, fontWeight:800 },
+  thDay: { fontSize:10, fontWeight:700, opacity:0.85, marginTop:1 },
+
+  tdItem: { position:"sticky", left:0, zIndex:1, fontSize:12, fontWeight:800, textAlign:"center",
+    padding:"8px 10px", borderBottom:"1px solid #e2e8f0", borderLeft:"3px solid transparent",
+    minWidth:130, width:130, background:"#fff" },
+  tdCell: { verticalAlign:"top", padding:4, borderBottom:"1px solid #e2e8f0",
+    borderLeft:"1px solid #e2e8f0", minWidth:110, background:"#fff" },
+  tdCellToday: { background:"#f0f9ff" },
+  tdCellPast: { background:"#f8fafc" },
+
+  cellStack: { display:"flex", flexDirection:"column", gap:3 },
+  cellSectionPlus: { display:"flex", flexWrap:"wrap", gap:2 },
+  cellSectionMinus: { display:"flex", flexWrap:"wrap", gap:2 },
+  cellSectionRoom: { display:"flex", flexWrap:"wrap", gap:2 },
+
+  legend: { display:"flex", gap:8, flexWrap:"wrap", padding:"10px 14px", borderTop:"1px solid #e2e8f0", background:"#f8fafc" },
+  legendItem: { fontSize:11, fontWeight:700, border:"1px solid", borderRadius:6, padding:"3px 8px" },
 };
