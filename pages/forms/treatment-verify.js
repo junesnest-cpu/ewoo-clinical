@@ -39,8 +39,17 @@ const TREATMENT_GROUPS = [
     items:[{ id:"pain",name:"페인스크렘블러" },{ id:"manip2",name:"도수치료2" },{ id:"manip1",name:"도수치료1" }] },
   { group:"경구제", color:"#d97706", bg:"#fffbeb",
     items:[
-      { id:"meshima",name:"메시마F",custom:"qty" },{ id:"selenase_l",name:"셀레나제액상",custom:"qty" },
-      { id:"selenase_t",name:"셀레나제정",custom:"qty" },{ id:"selenase_f",name:"셀레나제필름",custom:"qty" },
+      { id:"meshima",name:"메시마F",custom:"qty" },
+      { id:"selenase_l",name:"셀레나제",custom:"qty" },
+      { id:"selenase_t",name:"세파셀렌정",custom:"qty" },
+      { id:"selenase_f",name:"셀레늄필름",custom:"qty" },
+    ] },
+  { group:"퇴원약", color:"#92400e", bg:"#fef3c7",
+    items:[
+      { id:"meshima_dm",name:"메시마F(퇴원약)",custom:"qty",dischargeMed:true },
+      { id:"selenase_l_dm",name:"셀레나제(퇴원약)",custom:"qty",dischargeMed:true },
+      { id:"selenase_t_dm",name:"세파셀렌정(퇴원약)",custom:"qty",dischargeMed:true },
+      { id:"selenase_f_dm",name:"셀레늄필름(퇴원약)",custom:"qty",dischargeMed:true },
     ] },
 ];
 
@@ -604,6 +613,12 @@ function PatChip({ p, type }) {
         {p.roomId}-{p.bedNum}
       </span>
       <span>{p.patientName}</span>
+      {p.qty != null && p.qty !== "" && (
+        <span style={{ background:"#fff", color:fg, border:`1px solid ${bd}`,
+          borderRadius:3, padding:"0 4px", fontSize:9, fontWeight:800 }}>
+          {p.qty}개
+        </span>
+      )}
       {p.attending && ATT_COLORS[p.attending] && (
         <span style={{
           background: ATT_COLORS[p.attending].fg, color:"#fff",
