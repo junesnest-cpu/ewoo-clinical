@@ -532,28 +532,28 @@ export default function TreatmentVerify() {
                                 {cell.added.length > 0 && (
                                   <div style={S.cellSection}>
                                     {cell.added.map((p, idx) => (
-                                      <PatChip key={`a${idx}`} p={p} type="added" />
+                                      <PatChip key={`a${idx}`} p={p} type="added" itemId={itemId} />
                                     ))}
                                   </div>
                                 )}
                                 {cell.modified.length > 0 && (
                                   <div style={S.cellSection}>
                                     {cell.modified.map((p, idx) => (
-                                      <PatChip key={`mo${idx}`} p={p} type="modified" />
+                                      <PatChip key={`mo${idx}`} p={p} type="modified" itemId={itemId} />
                                     ))}
                                   </div>
                                 )}
                                 {cell.missing.length > 0 && (
                                   <div style={S.cellSection}>
                                     {cell.missing.map((p, idx) => (
-                                      <PatChip key={`mi${idx}`} p={p} type="missing" />
+                                      <PatChip key={`mi${idx}`} p={p} type="missing" itemId={itemId} />
                                     ))}
                                   </div>
                                 )}
                                 {cell.room.length > 0 && (
                                   <div style={S.cellSection}>
                                     {cell.room.map((p, idx) => (
-                                      <PatChip key={`r${idx}`} p={p} type="room" />
+                                      <PatChip key={`r${idx}`} p={p} type="room" itemId={itemId} />
                                     ))}
                                   </div>
                                 )}
@@ -603,9 +603,10 @@ const CHIP_COLORS = {
   room:     { bg:"#fef9c3", fg:"#78350f", bd:"#fde047" }, // 연노랑 · 치료실 제거
 };
 
-function PatChip({ p, type }) {
+function PatChip({ p, type, itemId }) {
   const c = CHIP_COLORS[type] || CHIP_COLORS.missing;
   const { bg, fg, bd } = c;
+  const showQty = ALL_ITEMS.find(x => x.id === itemId)?.custom === "qty";
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:3, background:bg, color:fg,
       border:`1px solid ${bd}`, borderRadius:5, padding:"1px 4px", fontSize:10, fontWeight:700, lineHeight:1.3 }}>
@@ -613,7 +614,7 @@ function PatChip({ p, type }) {
         {p.roomId}-{p.bedNum}
       </span>
       <span>{p.patientName}</span>
-      {p.qty != null && p.qty !== "" && (
+      {showQty && p.qty != null && p.qty !== "" && (
         <span style={{ background:"#fff", color:fg, border:`1px solid ${bd}`,
           borderRadius:3, padding:"0 4px", fontSize:9, fontWeight:800 }}>
           {p.qty}개
