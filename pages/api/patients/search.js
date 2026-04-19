@@ -6,8 +6,10 @@
  * RTDB REST API로 전체 환자 데이터를 가져와서 서버에서 이름 필터링
  */
 
-const DB_URL = 'https://ewoo-hospital-ward-default-rtdb.firebaseio.com';
-const API_KEY = 'AIzaSyAgr-alU71ZZj12S3MvCQKJQVdS6w-G3E4';
+import publicConfig from '../../../lib/firebasePublicConfig.json';
+
+const DB_URL = publicConfig.ward.databaseURL;
+const API_KEY = publicConfig.ward.apiKey;
 
 // 서비스 계정용 고정 로그인 (환경변수)
 const LOGIN_EMAIL = process.env.HOSPITAL_LOGIN_EMAIL;

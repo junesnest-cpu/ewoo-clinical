@@ -3,6 +3,7 @@
  * GET  /api/emr/patients              — 현재 입원환자 목록
  * POST /api/emr/patients { chartNo }  — 특정 환자 상세 (입원이력, 처방, 검사결과)
  */
+import sql from 'mssql';
 import { getPool } from '../../../lib/emrPool';
 
 export default async function handler(req, res) {
@@ -38,40 +39,50 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const { chartNo } = req.body;
-      if (!chartNo) return res.status(400).json({ error: 'chartNo required' });
+      if (!chartNo || typeof chartNo !== 'string' || !/^[A-Za-z0-9]{1,20}$/.test(chartNo)) {
+        return res.status(400).json({ error: 'chartNo required (alphanumeric, ≤20 chars)' });
+      }
 
       // 환자 기본정보
-      const basicR = await pool.request().query(`
-        SELECT TOP 1 chamWhanja AS name, chamJumin1 AS jumin, chamSex AS sex
-        FROM VIEWJUBLIST WHERE chamKey = '${chartNo}'
-      `);
+      const basicR = await pool.request()
+        .input('chartNo', sql.VarChar, chartNo)
+        .query(`
+          SELECT TOP 1 chamWhanja AS name, chamJumin1 AS jumin, chamSex AS sex
+          FROM VIEWJUBLIST WHERE chamKey = @chartNo
+        `);
       const basic = basicR.recordset[0] || {};
 
       // 입원이력
-      const histR = await pool.request().query(`
-        SELECT INDAT AS admitDate, OUTDAT AS dischargeDate, INSUCLS AS insuCls
-        FROM SILVER_PATIENT_INFO
-        WHERE CHARTNO = '${chartNo}' AND INDAT IS NOT NULL AND INDAT <> ''
-        ORDER BY INDAT DESC
-      `);
+      const histR = await pool.request()
+        .input('chartNo', sql.VarChar, chartNo)
+        .query(`
+          SELECT INDAT AS admitDate, OUTDAT AS dischargeDate, INSUCLS AS insuCls
+          FROM SILVER_PATIENT_INFO
+          WHERE CHARTNO = @chartNo AND INDAT IS NOT NULL AND INDAT <> ''
+          ORDER BY INDAT DESC
+        `);
 
       // 최근 처방
-      const orderR = await pool.request().query(`
-        SELECT TOP 50 idam_date AS dt, RTRIM(idam_momn) AS code,
-          idam_times AS times, idam_dosage AS dosage
-        FROM Widam WHERE idam_cham = '${chartNo}'
-        ORDER BY idam_date DESC
-      `);
+      const orderR = await pool.request()
+        .input('chartNo', sql.VarChar, chartNo)
+        .query(`
+          SELECT TOP 50 idam_date AS dt, RTRIM(idam_momn) AS code,
+            idam_times AS times, idam_dosage AS dosage
+          FROM Widam WHERE idam_cham = @chartNo
+          ORDER BY idam_date DESC
+        `);
 
       // 최근 바이탈 (간호기록에서)
       let vitals = [];
       try {
-        const vitalR = await pool.request().query(`
-          SELECT TOP 30 *
-          FROM Wnurse
-          WHERE nurse_cham = '${chartNo}'
-          ORDER BY nurse_date DESC
-        `);
+        const vitalR = await pool.request()
+          .input('chartNo', sql.VarChar, chartNo)
+          .query(`
+            SELECT TOP 30 *
+            FROM Wnurse
+            WHERE nurse_cham = @chartNo
+            ORDER BY nurse_date DESC
+          `);
         vitals = vitalR.recordset;
       } catch (e) { /* 테이블 없을 수 있음 */ }
 

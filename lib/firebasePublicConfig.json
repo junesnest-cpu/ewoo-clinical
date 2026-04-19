@@ -1,0 +1,9 @@
+{
+  "ward": {
+    "apiKey": "AIzaSyAgr-alU71ZZj12S3MvCQKJQVdS6w-G3E4",
+    "authDomain": "ewoo-hospital-ward.firebaseapp.com",
+    "databaseURL": "https://ewoo-hospital-ward-default-rtdb.firebaseio.com",
+    "projectId": "ewoo-hospital-ward",
+    "appId": "1:678990173440:web:2fa6878d9dff7d4039cfe5"
+  }
+}

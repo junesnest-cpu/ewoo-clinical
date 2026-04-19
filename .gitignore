@@ -27,6 +27,13 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env
+.env.vercel-check
+!.env.local.example
+
+# MCP 설정 (API tokens 포함)
+.mcp.json
+.mcp.local.json
 
 # vercel
 .vercel

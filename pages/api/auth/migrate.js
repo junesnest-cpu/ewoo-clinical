@@ -3,9 +3,10 @@
  * approval·ward 중 한쪽만 인증되면 반대쪽 계정 생성/비밀번호 업데이트
  */
 import { approvalAdminAuth, approvalAdminDb, wardAdminAuth } from '../../../lib/firebaseAdmin';
+import publicConfig from '../../../lib/firebasePublicConfig.json';
 
-const APPROVAL_API_KEY = 'AIzaSyCajixUUY0le1NhvO2hMCJoPA_pffjs1rE';
-const WARD_API_KEY     = 'AIzaSyAgr-alU71ZZj12S3MvCQKJQVdS6w-G3E4';
+const APPROVAL_API_KEY = process.env.NEXT_PUBLIC_APPROVAL_API_KEY;
+const WARD_API_KEY     = publicConfig.ward.apiKey;
 
 async function signInREST(apiKey, email, password) {
   const res = await fetch(
