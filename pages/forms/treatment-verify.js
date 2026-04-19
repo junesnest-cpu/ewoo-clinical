@@ -131,12 +131,13 @@ export default function TreatmentVerify() {
 
   // 치료별·날짜별 불일치 집계 (매트릭스)
   const { mismatchMatrix, itemIds, emrSummary, attCounts, unassignedCount } = useMemo(() => {
-    // matrix[itemId][dateISO] = { plus:[], minus:[], room:[] }
-    //   plus  = 치료실입력 미입력 (EMR엔 있는데 치료계획 없음)
-    //   minus = EMR 미반영 (치료계획엔 있는데 EMR 없음)
-    //   room  = 치료실 제거 (오늘/미래만)
+    // matrix[itemId][dateISO] = { added:[], modified:[], missing:[], room:[] }
+    //   added    = EMR 추가 (EMR에만 있음, 파랑)
+    //   modified = 치료실 입력사항 EMR 미반영 (수량 다름, 갈색)
+    //   missing  = EMR 미입력 (치료계획엔 있는데 EMR 없음, 빨강)  ← removed/missing 통합
+    //   room     = 치료실 제거 (오늘/미래만)
     const matrix = {};
-    const summary = { match:0, plus:0, minus:0, room:0 };
+    const summary = { match:0, added:0, modified:0, missing:0, room:0 };
 
     for (const sk of Object.keys(slots)) {
       const current = slots[sk]?.current;
@@ -156,8 +157,9 @@ export default function TreatmentVerify() {
           if (e.room === "removed" && isPast) continue;
           const type = e.room === "removed" ? "room" :
             e.emr === "match" ? "match" :
-            (e.emr === "added" || e.emr === "modified") ? "plus" :
-            (e.emr === "removed" || e.emr === "missing") ? "minus" : null;
+            e.emr === "added" ? "added" :
+            e.emr === "modified" ? "modified" :
+            (e.emr === "removed" || e.emr === "missing") ? "missing" : null;
           if (!type) continue;
           summary[type]++;
           if (type === "match") continue;
@@ -166,11 +168,12 @@ export default function TreatmentVerify() {
             if (!grp || !grp.items.some(i => i.id === e.id)) continue;
           }
           if (!matrix[e.id]) matrix[e.id] = {};
-          if (!matrix[e.id][dateISO]) matrix[e.id][dateISO] = { plus:[], minus:[], room:[] };
+          if (!matrix[e.id][dateISO]) matrix[e.id][dateISO] = { added:[], modified:[], missing:[], room:[] };
           const [rid, bed] = sk.split("-");
           matrix[e.id][dateISO][type].push({
             slotKey: sk, roomId: rid, bedNum: bed,
             patientName: current.name, attending,
+            qty: e.qty,
           });
         }
       }
@@ -196,7 +199,7 @@ export default function TreatmentVerify() {
     // 셀 내부 환자 배열은 병실순으로 정렬
     for (const itemId of Object.keys(matrix)) {
       for (const dk of Object.keys(matrix[itemId])) {
-        for (const kind of ["plus","minus","room"]) {
+        for (const kind of ["added","modified","missing","room"]) {
           matrix[itemId][dk][kind].sort((a,b) => a.roomId.localeCompare(b.roomId));
         }
       }
@@ -233,7 +236,7 @@ export default function TreatmentVerify() {
       const attending = current?.attending || "";
       if (filterAttending && attending !== filterAttending) continue;
       const admit = parseAdmitDate(current.admitDate);
-      let plus = 0, minus = 0, room = 0;
+      let added = 0, modified = 0, missing = 0, room = 0;
       for (const d of weekDates) {
         if (admit && d < admit) continue;
         const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
@@ -243,20 +246,22 @@ export default function TreatmentVerify() {
           if (e.room === "removed" && isPast) continue;
           const t = e.room === "removed" ? "room" :
             e.emr === "match" ? "match" :
-            (e.emr === "added" || e.emr === "modified") ? "plus" :
-            (e.emr === "removed" || e.emr === "missing") ? "minus" : null;
+            e.emr === "added" ? "added" :
+            e.emr === "modified" ? "modified" :
+            (e.emr === "removed" || e.emr === "missing") ? "missing" : null;
           if (filterGroup && t && t !== "match") {
             const grp = TREATMENT_GROUPS.find(g => g.group === filterGroup);
             if (!grp || !grp.items.some(i => i.id === e.id)) continue;
           }
-          if (t === "plus") plus++;
-          else if (t === "minus") minus++;
+          if (t === "added") added++;
+          else if (t === "modified") modified++;
+          else if (t === "missing") missing++;
           else if (t === "room") room++;
         }
       }
-      if (plus + minus + room === 0) continue;
+      if (added + modified + missing + room === 0) continue;
       const [rid, bed] = sk.split("-");
-      arr.push({ slotKey: sk, roomId: rid, bedNum: bed, name: current.name, attending, plus, minus, room });
+      arr.push({ slotKey: sk, roomId: rid, bedNum: bed, name: current.name, attending, added, modified, missing, room });
     }
     return arr.sort((a,b) => a.slotKey.localeCompare(b.slotKey));
   }, [slots, treatPlans, weekDates, filterAttending, filterGroup, today]);
@@ -279,19 +284,21 @@ export default function TreatmentVerify() {
         if (e.room === "removed" && isPast) continue;
         const type = e.room === "removed" ? "room" :
           e.emr === "match" ? "match" :
-          (e.emr === "added" || e.emr === "modified") ? "plus" :
-          (e.emr === "removed" || e.emr === "missing") ? "minus" : null;
+          e.emr === "added" ? "added" :
+          e.emr === "modified" ? "modified" :
+          (e.emr === "removed" || e.emr === "missing") ? "missing" : null;
         if (!type || type === "match") continue;
         if (filterGroup) {
           const grp = TREATMENT_GROUPS.find(g => g.group === filterGroup);
           if (!grp || !grp.items.some(i => i.id === e.id)) continue;
         }
         if (!matrix[e.id]) matrix[e.id] = {};
-        if (!matrix[e.id][dateISO]) matrix[e.id][dateISO] = { plus:[], minus:[], room:[] };
+        if (!matrix[e.id][dateISO]) matrix[e.id][dateISO] = { added:[], modified:[], missing:[], room:[] };
         const [rid, bed] = sk.split("-");
         matrix[e.id][dateISO][type].push({
           slotKey: sk, roomId: rid, bedNum: bed,
           patientName: current.name, attending: current.attending || "",
+          qty: e.qty,
         });
       }
     }
@@ -343,10 +350,11 @@ export default function TreatmentVerify() {
             <strong style={{color:"#0ea5e9", fontSize:20}}>{itemIds.length}</strong>개 치료 불일치
           </div>
           <div style={S.totalSub}>
-            <span style={{color:"#10b981"}}>EMR {emrSummary.match}</span>
-            <span style={{color:"#3b82f6"}}>EMR+ {emrSummary.plus}</span>
-            <span style={{color:"#ef4444"}}>EMR- {emrSummary.minus}</span>
-            {emrSummary.room > 0 && <span style={{color:"#7c2d12"}}>치료실- {emrSummary.room}</span>}
+            <span style={{color:"#16a34a"}}>일치 {emrSummary.match}</span>
+            <span style={{color:"#2563eb"}}>EMR 추가 {emrSummary.added}</span>
+            <span style={{color:"#b45309"}}>EMR 미반영 {emrSummary.modified}</span>
+            <span style={{color:"#dc2626"}}>EMR 미입력 {emrSummary.missing}</span>
+            {emrSummary.room > 0 && <span style={{color:"#78350f"}}>치료실 제거 {emrSummary.room}</span>}
           </div>
         </div>
         <div style={S.syncBox}>
@@ -430,9 +438,10 @@ export default function TreatmentVerify() {
                           )}
                         </div>
                         <div style={S.sidebarRow2}>
-                          {p.plus > 0 && <span style={{color:"#1e40af"}}>+{p.plus}</span>}
-                          {p.minus > 0 && <span style={{color:"#991b1b"}}>-{p.minus}</span>}
-                          {p.room > 0 && <span style={{color:"#92400e"}}>실{p.room}</span>}
+                          {p.added > 0 && <span style={{color:"#1e40af"}}>추+{p.added}</span>}
+                          {p.modified > 0 && <span style={{color:"#92400e"}}>반+{p.modified}</span>}
+                          {p.missing > 0 && <span style={{color:"#991b1b"}}>미+{p.missing}</span>}
+                          {p.room > 0 && <span style={{color:"#78350f"}}>실{p.room}</span>}
                         </div>
                       </button>
                     );
@@ -509,26 +518,33 @@ export default function TreatmentVerify() {
                             ...(isToday ? S.tdCellToday : {}),
                             ...(isPast && !isToday ? S.tdCellPast : {}),
                           }}>
-                            {cell && (cell.plus.length > 0 || cell.minus.length > 0 || cell.room.length > 0) ? (
+                            {cell && (cell.added.length || cell.modified.length || cell.missing.length || cell.room.length) ? (
                               <div style={S.cellStack}>
-                                {cell.plus.length > 0 && (
-                                  <div style={S.cellSectionPlus}>
-                                    {cell.plus.map((p, idx) => (
-                                      <PatChip key={`p${idx}`} p={p} type="plus" />
+                                {cell.added.length > 0 && (
+                                  <div style={S.cellSection}>
+                                    {cell.added.map((p, idx) => (
+                                      <PatChip key={`a${idx}`} p={p} type="added" />
+                                    ))}
+                                  </div>
+                                )}
+                                {cell.modified.length > 0 && (
+                                  <div style={S.cellSection}>
+                                    {cell.modified.map((p, idx) => (
+                                      <PatChip key={`mo${idx}`} p={p} type="modified" />
+                                    ))}
+                                  </div>
+                                )}
+                                {cell.missing.length > 0 && (
+                                  <div style={S.cellSection}>
+                                    {cell.missing.map((p, idx) => (
+                                      <PatChip key={`mi${idx}`} p={p} type="missing" />
                                     ))}
                                   </div>
                                 )}
                                 {cell.room.length > 0 && (
-                                  <div style={S.cellSectionRoom}>
+                                  <div style={S.cellSection}>
                                     {cell.room.map((p, idx) => (
                                       <PatChip key={`r${idx}`} p={p} type="room" />
-                                    ))}
-                                  </div>
-                                )}
-                                {cell.minus.length > 0 && (
-                                  <div style={S.cellSectionMinus}>
-                                    {cell.minus.map((p, idx) => (
-                                      <PatChip key={`m${idx}`} p={p} type="minus" />
                                     ))}
                                   </div>
                                 )}
@@ -543,14 +559,20 @@ export default function TreatmentVerify() {
               </tbody>
             </table>
             <div style={S.legend}>
+              <span style={{...S.legendItem, background:"#dcfce7", color:"#166534", borderColor:"#86efac"}}>
+                EMR 일치
+              </span>
               <span style={{...S.legendItem, background:"#dbeafe", color:"#1e40af", borderColor:"#60a5fa"}}>
-                위 · 치료실입력 미입력 (EMR+)
+                EMR 추가 (EMR에만 있음)
+              </span>
+              <span style={{...S.legendItem, background:"#fef3c7", color:"#92400e", borderColor:"#d97706"}}>
+                치료실 입력 EMR 미반영 (수량 불일치)
               </span>
               <span style={{...S.legendItem, background:"#fee2e2", color:"#991b1b", borderColor:"#fca5a5"}}>
-                아래 · EMR 미반영 (EMR-)
+                EMR 미입력 (EMR에 없음)
               </span>
               {emrSummary.room > 0 && (
-                <span style={{...S.legendItem, background:"#fef3c7", color:"#92400e", borderColor:"#fbbf24"}}>
+                <span style={{...S.legendItem, background:"#fef9c3", color:"#78350f", borderColor:"#fde047"}}>
                   치료실 제거
                 </span>
               )}
@@ -565,10 +587,16 @@ export default function TreatmentVerify() {
   );
 }
 
+const CHIP_COLORS = {
+  added:    { bg:"#dbeafe", fg:"#1e40af", bd:"#60a5fa" }, // 파랑 · EMR 추가
+  modified: { bg:"#fef3c7", fg:"#92400e", bd:"#d97706" }, // 갈색 · 치료실 입력 EMR 미반영
+  missing:  { bg:"#fee2e2", fg:"#991b1b", bd:"#fca5a5" }, // 빨강 · EMR 미입력
+  room:     { bg:"#fef9c3", fg:"#78350f", bd:"#fde047" }, // 연노랑 · 치료실 제거
+};
+
 function PatChip({ p, type }) {
-  const bg = type === "plus" ? "#dbeafe" : type === "room" ? "#fef3c7" : "#fee2e2";
-  const fg = type === "plus" ? "#1e40af" : type === "room" ? "#92400e" : "#991b1b";
-  const bd = type === "plus" ? "#60a5fa" : type === "room" ? "#fbbf24" : "#fca5a5";
+  const c = CHIP_COLORS[type] || CHIP_COLORS.missing;
+  const { bg, fg, bd } = c;
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:3, background:bg, color:fg,
       border:`1px solid ${bd}`, borderRadius:5, padding:"1px 4px", fontSize:10, fontWeight:700, lineHeight:1.3 }}>
@@ -659,9 +687,7 @@ const S = {
   tdCellPast: { background:"#f8fafc" },
 
   cellStack: { display:"flex", flexDirection:"column", gap:3 },
-  cellSectionPlus: { display:"flex", flexWrap:"wrap", gap:2 },
-  cellSectionMinus: { display:"flex", flexWrap:"wrap", gap:2 },
-  cellSectionRoom: { display:"flex", flexWrap:"wrap", gap:2 },
+  cellSection: { display:"flex", flexWrap:"wrap", gap:2 },
 
   legend: { display:"flex", gap:8, flexWrap:"wrap", padding:"10px 14px", borderTop:"1px solid #e2e8f0", background:"#f8fafc" },
   legendItem: { fontSize:11, fontWeight:700, border:"1px solid", borderRadius:6, padding:"3px 8px" },
