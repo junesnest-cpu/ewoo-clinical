@@ -105,6 +105,8 @@ export default function TreatmentVerify() {
   const [loading, setLoading] = useState(true);
   const [filterAttending, setFilterAttending] = useState(null);
   const [filterGroup, setFilterGroup] = useState(null);
+  const [viewMode, setViewMode] = useState("all"); // "all" | "patient"
+  const [selectedSlotKey, setSelectedSlotKey] = useState(null);
 
   useEffect(() => {
     const unsubS = onValue(ref(wardDb, "slots"), snap => setSlots(snap.val() || {}));
@@ -222,6 +224,94 @@ export default function TreatmentVerify() {
     return TREATMENT_GROUPS.filter(g => set.has(g.group));
   }, [itemIds]);
 
+  // 사이드바 환자 목록 (불일치 있는 환자만, 병실순)
+  const patientList = useMemo(() => {
+    const arr = [];
+    for (const sk of Object.keys(slots)) {
+      const current = slots[sk]?.current;
+      if (!current?.name) continue;
+      const attending = current?.attending || "";
+      if (filterAttending && attending !== filterAttending) continue;
+      const admit = parseAdmitDate(current.admitDate);
+      let plus = 0, minus = 0, room = 0;
+      for (const d of weekDates) {
+        if (admit && d < admit) continue;
+        const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
+        if (!items) continue;
+        const isPast = d < today;
+        for (const e of items) {
+          if (e.room === "removed" && isPast) continue;
+          const t = e.room === "removed" ? "room" :
+            e.emr === "match" ? "match" :
+            (e.emr === "added" || e.emr === "modified") ? "plus" :
+            (e.emr === "removed" || e.emr === "missing") ? "minus" : null;
+          if (filterGroup && t && t !== "match") {
+            const grp = TREATMENT_GROUPS.find(g => g.group === filterGroup);
+            if (!grp || !grp.items.some(i => i.id === e.id)) continue;
+          }
+          if (t === "plus") plus++;
+          else if (t === "minus") minus++;
+          else if (t === "room") room++;
+        }
+      }
+      if (plus + minus + room === 0) continue;
+      const [rid, bed] = sk.split("-");
+      arr.push({ slotKey: sk, roomId: rid, bedNum: bed, name: current.name, attending, plus, minus, room });
+    }
+    return arr.sort((a,b) => a.slotKey.localeCompare(b.slotKey));
+  }, [slots, treatPlans, weekDates, filterAttending, filterGroup, today]);
+
+  // 선택 환자의 매트릭스
+  const selectedMatrix = useMemo(() => {
+    if (viewMode !== "patient" || !selectedSlotKey) return null;
+    const sk = selectedSlotKey;
+    const current = slots[sk]?.current;
+    if (!current?.name) return { matrix:{}, itemIds:[], current:null };
+    const admit = parseAdmitDate(current.admitDate);
+    const matrix = {};
+    for (const d of weekDates) {
+      if (admit && d < admit) continue;
+      const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
+      if (!items) continue;
+      const isPast = d < today;
+      const dateISO = toISOLocal(d);
+      for (const e of items) {
+        if (e.room === "removed" && isPast) continue;
+        const type = e.room === "removed" ? "room" :
+          e.emr === "match" ? "match" :
+          (e.emr === "added" || e.emr === "modified") ? "plus" :
+          (e.emr === "removed" || e.emr === "missing") ? "minus" : null;
+        if (!type || type === "match") continue;
+        if (filterGroup) {
+          const grp = TREATMENT_GROUPS.find(g => g.group === filterGroup);
+          if (!grp || !grp.items.some(i => i.id === e.id)) continue;
+        }
+        if (!matrix[e.id]) matrix[e.id] = {};
+        if (!matrix[e.id][dateISO]) matrix[e.id][dateISO] = { plus:[], minus:[], room:[] };
+        const [rid, bed] = sk.split("-");
+        matrix[e.id][dateISO][type].push({
+          slotKey: sk, roomId: rid, bedNum: bed,
+          patientName: current.name, attending: current.attending || "",
+        });
+      }
+    }
+    const itemOrder = Object.fromEntries(ALL_ITEMS.map((it, i) => [it.id, i]));
+    const sortedIds = Object.keys(matrix).sort((a, b) => (itemOrder[a] ?? 999) - (itemOrder[b] ?? 999));
+    return { matrix, itemIds: sortedIds, current };
+  }, [viewMode, selectedSlotKey, slots, treatPlans, weekDates, filterGroup, today]);
+
+  // 환자별 모드에서 현재 선택 환자가 목록에 없으면 자동 해제, 첫 환자 자동 선택
+  useEffect(() => {
+    if (viewMode !== "patient") return;
+    if (!patientList.length) { if (selectedSlotKey) setSelectedSlotKey(null); return; }
+    if (!selectedSlotKey || !patientList.some(p => p.slotKey === selectedSlotKey)) {
+      setSelectedSlotKey(patientList[0].slotKey);
+    }
+  }, [viewMode, patientList, selectedSlotKey]);
+
+  const activeMatrix = viewMode === "patient" ? (selectedMatrix?.matrix || {}) : mismatchMatrix;
+  const activeItemIds = viewMode === "patient" ? (selectedMatrix?.itemIds || []) : itemIds;
+
   const prevWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate()-7); setWeekStart(d); };
   const nextWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate()+7); setWeekStart(d); };
   const thisWeek = () => setWeekStart(getMonday(today));
@@ -267,6 +357,13 @@ export default function TreatmentVerify() {
 
       <div style={S.filterBar}>
         <div style={S.filterLine}>
+          <span style={S.filterLabel}>뷰</span>
+          <button style={{...S.filterBtn, ...(viewMode==="all" ? S.filterBtnActive : {})}}
+            onClick={() => setViewMode("all")}>전체</button>
+          <button style={{...S.filterBtn, ...(viewMode==="patient" ? S.filterBtnActive : {})}}
+            onClick={() => setViewMode("patient")}>환자별 ({patientList.length})</button>
+        </div>
+        <div style={S.filterLine}>
           <span style={S.filterLabel}>주치의</span>
           <button style={{...S.filterBtn, ...(filterAttending===null ? S.filterBtnActive : {})}}
             onClick={() => setFilterAttending(null)}>전체</button>
@@ -305,10 +402,71 @@ export default function TreatmentVerify() {
       <main style={S.main}>
         {loading ? (
           <div style={S.empty}>불러오는 중...</div>
-        ) : itemIds.length === 0 ? (
-          <div style={S.empty}>이 주는 불일치 항목이 없습니다. ✓</div>
+        ) : (
+          <div style={S.layout}>
+            {viewMode === "patient" && (
+              <aside style={S.sidebar}>
+                <div style={S.sidebarHeader}>
+                  환자 {patientList.length}명
+                </div>
+                <div style={S.sidebarList}>
+                  {patientList.length === 0 && (
+                    <div style={{fontSize:12, color:"#94a3b8", padding:"10px 12px"}}>불일치 환자 없음</div>
+                  )}
+                  {patientList.map(p => {
+                    const active = selectedSlotKey === p.slotKey;
+                    const attC = ATT_COLORS[p.attending];
+                    return (
+                      <button key={p.slotKey}
+                        onClick={() => setSelectedSlotKey(p.slotKey)}
+                        style={{...S.sidebarItem, ...(active ? S.sidebarItemActive : {})}}>
+                        <div style={S.sidebarRow1}>
+                          <span style={S.sidebarRoom}>{p.roomId}-{p.bedNum}</span>
+                          <span style={S.sidebarName}>{p.name}</span>
+                          {attC && (
+                            <span style={{...S.sidebarAtt, background:attC.bg, color:attC.fg, borderColor:attC.border}}>
+                              {p.attending[0]}
+                            </span>
+                          )}
+                        </div>
+                        <div style={S.sidebarRow2}>
+                          {p.plus > 0 && <span style={{color:"#1e40af"}}>+{p.plus}</span>}
+                          {p.minus > 0 && <span style={{color:"#991b1b"}}>-{p.minus}</span>}
+                          {p.room > 0 && <span style={{color:"#92400e"}}>실{p.room}</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </aside>
+            )}
+
+            <div style={S.tableArea}>
+        {activeItemIds.length === 0 ? (
+          <div style={S.empty}>
+            {viewMode === "patient"
+              ? (patientList.length === 0 ? "이 주는 불일치 환자가 없습니다. ✓" : "선택한 환자는 이 주 불일치 항목이 없습니다. ✓")
+              : "이 주는 불일치 항목이 없습니다. ✓"}
+          </div>
         ) : (
           <div style={S.tableWrap}>
+            {viewMode === "patient" && selectedMatrix?.current && (
+              <div style={S.patientHeader}>
+                <span style={S.patientHeaderRoom}>{selectedMatrix.current && selectedSlotKey && `${selectedSlotKey.split("-")[0]}-${selectedSlotKey.split("-")[1]}`}</span>
+                <span style={S.patientHeaderName}>{selectedMatrix.current.name}</span>
+                {selectedMatrix.current.attending && ATT_COLORS[selectedMatrix.current.attending] && (
+                  <span style={{...S.patientHeaderAtt,
+                    background: ATT_COLORS[selectedMatrix.current.attending].bg,
+                    color: ATT_COLORS[selectedMatrix.current.attending].fg,
+                    borderColor: ATT_COLORS[selectedMatrix.current.attending].border}}>
+                    {selectedMatrix.current.attending}
+                  </span>
+                )}
+                {selectedMatrix.current.admitDate && (
+                  <span style={S.patientHeaderAdmit}>입원 {selectedMatrix.current.admitDate}</span>
+                )}
+              </div>
+            )}
             <table style={S.table}>
               <thead>
                 <tr>
@@ -332,7 +490,7 @@ export default function TreatmentVerify() {
                 </tr>
               </thead>
               <tbody>
-                {itemIds.map(itemId => {
+                {activeItemIds.map(itemId => {
                   const item = ALL_ITEMS.find(i => i.id === itemId);
                   const grp = TREATMENT_GROUPS.find(g => g.items.some(i => i.id === itemId));
                   return (
@@ -342,7 +500,7 @@ export default function TreatmentVerify() {
                       </td>
                       {weekDates.map((d, i) => {
                         const dateISO = toISOLocal(d);
-                        const cell = mismatchMatrix[itemId]?.[dateISO];
+                        const cell = activeMatrix[itemId]?.[dateISO];
                         const isToday = isSameDay(d, today);
                         const isPast = d < today;
                         return (
@@ -399,6 +557,9 @@ export default function TreatmentVerify() {
             </div>
           </div>
         )}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
@@ -452,6 +613,29 @@ const S = {
 
   main: { padding:"20px" },
   empty: { textAlign:"center", color:"#94a3b8", fontSize:15, marginTop:60 },
+
+  layout: { display:"flex", gap:14, alignItems:"flex-start" },
+  sidebar: { width:200, flexShrink:0, background:"#fff", border:"1px solid #e2e8f0", borderRadius:10,
+    boxShadow:"0 1px 3px rgba(0,0,0,0.04)", overflow:"hidden", maxHeight:"calc(100vh - 220px)", display:"flex", flexDirection:"column" },
+  sidebarHeader: { background:"#0f2744", color:"#fff", fontSize:12, fontWeight:800,
+    padding:"10px 12px", textAlign:"center" },
+  sidebarList: { overflowY:"auto", flex:1, padding:6, display:"flex", flexDirection:"column", gap:3 },
+  sidebarItem: { textAlign:"left", background:"#f8fafc", border:"1.5px solid transparent",
+    borderRadius:7, padding:"6px 8px", cursor:"pointer", display:"flex", flexDirection:"column", gap:2, fontFamily:"inherit" },
+  sidebarItemActive: { background:"#e0f2fe", borderColor:"#0284c7" },
+  sidebarRow1: { display:"flex", alignItems:"center", gap:5, fontSize:12 },
+  sidebarRow2: { display:"flex", gap:6, fontSize:11, fontWeight:800, marginLeft:2 },
+  sidebarRoom: { background:"#0f2744", color:"#fff", borderRadius:3, padding:"1px 5px", fontSize:10, fontWeight:700 },
+  sidebarName: { fontWeight:800, color:"#0f172a" },
+  sidebarAtt: { fontSize:9, fontWeight:800, borderRadius:3, padding:"0 4px", border:"1px solid", marginLeft:"auto" },
+
+  tableArea: { flex:1, minWidth:0 },
+  patientHeader: { display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
+    borderBottom:"1px solid #e2e8f0", background:"#f8fafc", flexWrap:"wrap" },
+  patientHeaderRoom: { background:"#0f2744", color:"#fff", borderRadius:5, padding:"2px 8px", fontSize:12, fontWeight:800 },
+  patientHeaderName: { fontSize:15, fontWeight:800, color:"#0f172a" },
+  patientHeaderAtt: { fontSize:11, fontWeight:800, borderRadius:5, padding:"2px 7px", border:"1px solid" },
+  patientHeaderAdmit: { fontSize:11, color:"#64748b", fontWeight:700, marginLeft:"auto" },
 
   tableWrap: { overflowX:"auto", background:"#fff", borderRadius:10, border:"1px solid #e2e8f0", boxShadow:"0 1px 3px rgba(0,0,0,0.04)" },
   table: { width:"100%", borderCollapse:"separate", borderSpacing:0, minWidth:720 },
