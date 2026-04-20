@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { auth } from '../../lib/firebaseConfig';
 
 export default function MedicalOpinion() {
   const [query, setQuery] = useState('');
@@ -144,9 +145,13 @@ export default function MedicalOpinion() {
         ...opinionData,
         admissions: selectedAdmission ? [selectedAdmission] : opinionData.admissions,
       };
+      const token = await auth.currentUser?.getIdToken();
       const r = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           formType: 'medical_opinion',
           patientData: dataForAI,
