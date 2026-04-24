@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { ref, onValue } from "firebase/database";
 import { wardDb } from "../../lib/firebaseConfig";
+import { admissionKey } from "../../lib/planPaths";
 import { useAuth } from "../_app";
 
 const WARD_STRUCTURE = {
@@ -119,7 +120,7 @@ export default function TreatmentVerify() {
 
   useEffect(() => {
     const unsubS = onValue(ref(wardDb, "slots"), snap => setSlots(snap.val() || {}));
-    const unsubT = onValue(ref(wardDb, "treatmentPlans"), snap => { setTreatPlans(snap.val() || {}); setLoading(false); });
+    const unsubT = onValue(ref(wardDb, "treatmentPlansV2"), snap => { setTreatPlans(snap.val() || {}); setLoading(false); });
     const unsubE = onValue(ref(wardDb, "emrSyncLog/lastSync"), snap => setEmrSyncTime(snap.val()));
     const unsubR = onValue(ref(wardDb, "roomSyncLog/lastSync"), snap => setRoomSyncTime(snap.val()));
     return () => { unsubS(); unsubT(); unsubE(); unsubR(); };
@@ -155,10 +156,13 @@ export default function TreatmentVerify() {
       if (filterAttending && attending !== filterAttending) continue;
 
       const admit = parseAdmitDate(current.admitDate);
+      const pid   = current?.patientId;
+      const aKey  = admissionKey(current?.admitDate);
+      if (!pid || !aKey) continue;
 
       for (const d of weekDates) {
         if (admit && d < admit) continue;
-        const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
+        const items = treatPlans[pid]?.[aKey]?.[toMK(d)]?.[toDK(d)];
         if (!items) continue;
         const isPast = d < today;
         const dateISO = toISOLocal(d);
@@ -193,11 +197,14 @@ export default function TreatmentVerify() {
     for (const sk of Object.keys(slots)) {
       const current = slots[sk]?.current;
       if (!current?.name) continue;
+      const pid  = current?.patientId;
+      const aKey = admissionKey(current?.admitDate);
+      if (!pid || !aKey) continue;
       const admit = parseAdmitDate(current.admitDate);
       let hasWeekPlan = false;
       for (const d of weekDates) {
         if (admit && d < admit) continue;
-        if (treatPlans[sk]?.[toMK(d)]?.[toDK(d)]?.length) { hasWeekPlan = true; break; }
+        if (treatPlans[pid]?.[aKey]?.[toMK(d)]?.[toDK(d)]?.length) { hasWeekPlan = true; break; }
       }
       if (!hasWeekPlan) continue;
       const att = current.attending || "";
@@ -244,11 +251,14 @@ export default function TreatmentVerify() {
       if (!current?.name) continue;
       const attending = current?.attending || "";
       if (filterAttending && attending !== filterAttending) continue;
+      const pid  = current?.patientId;
+      const aKey = admissionKey(current?.admitDate);
+      if (!pid || !aKey) continue;
       const admit = parseAdmitDate(current.admitDate);
       let added = 0, modified = 0, missing = 0, room = 0;
       for (const d of weekDates) {
         if (admit && d < admit) continue;
-        const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
+        const items = treatPlans[pid]?.[aKey]?.[toMK(d)]?.[toDK(d)];
         if (!items) continue;
         const isPast = d < today;
         for (const e of items) {
@@ -281,11 +291,14 @@ export default function TreatmentVerify() {
     const sk = selectedSlotKey;
     const current = slots[sk]?.current;
     if (!current?.name) return { matrix:{}, itemIds:[], current:null };
+    const pid  = current?.patientId;
+    const aKey = admissionKey(current?.admitDate);
+    if (!pid || !aKey) return { matrix:{}, itemIds:[], current };
     const admit = parseAdmitDate(current.admitDate);
     const matrix = {};
     for (const d of weekDates) {
       if (admit && d < admit) continue;
-      const items = treatPlans[sk]?.[toMK(d)]?.[toDK(d)];
+      const items = treatPlans[pid]?.[aKey]?.[toMK(d)]?.[toDK(d)];
       if (!items) continue;
       const isPast = d < today;
       const dateISO = toISOLocal(d);
