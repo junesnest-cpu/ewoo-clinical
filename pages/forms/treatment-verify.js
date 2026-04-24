@@ -119,8 +119,12 @@ export default function TreatmentVerify() {
   const [selectedSlotKey, setSelectedSlotKey] = useState(null);
 
   useEffect(() => {
-    const unsubS = onValue(ref(wardDb, "slots"), snap => setSlots(snap.val() || {}));
-    const unsubT = onValue(ref(wardDb, "treatmentPlansV2"), snap => { setTreatPlans(snap.val() || {}); setLoading(false); });
+    const unsubS = onValue(ref(wardDb, "slots"),
+      snap => { setSlots(snap.val() || {}); setLoading(false); },
+      err  => { console.error("[verify] slots read failed:", err); setLoading(false); });
+    const unsubT = onValue(ref(wardDb, "treatmentPlansV2"),
+      snap => { setTreatPlans(snap.val() || {}); setLoading(false); },
+      err  => { console.error("[verify] treatmentPlansV2 read failed:", err); setLoading(false); });
     const unsubE = onValue(ref(wardDb, "emrSyncLog/lastSync"), snap => setEmrSyncTime(snap.val()));
     const unsubR = onValue(ref(wardDb, "roomSyncLog/lastSync"), snap => setRoomSyncTime(snap.val()));
     return () => { unsubS(); unsubT(); unsubE(); unsubR(); };
