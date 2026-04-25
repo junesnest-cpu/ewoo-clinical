@@ -3,6 +3,7 @@
  * GET /api/emr/rounding — 병실순 입원환자 + 환자정보 메모
  */
 import { getPool } from '../../../lib/emrPool';
+import { requireAuth } from '../../../lib/verifyAuth';
 
 // bedm_room은 병원 전체 순차 번호 (1~21) → 실제 호실명으로 변환
 const ROOM_MAP = {
@@ -14,6 +15,9 @@ const ROOM_MAP = {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
+
+  const a = await requireAuth(req, res);
+  if (!a.ok && !a.audited) return;
 
   try {
     const pool = await getPool();

@@ -5,8 +5,12 @@
  * POST /api/vitals { date, session, chartNo, vitals, userId } — 바이탈 저장
  */
 import { adminDb } from '../../lib/firebaseAdmin';
+import { requireAuth } from '../../lib/verifyAuth';
 
 export default async function handler(req, res) {
+  const a = await requireAuth(req, res);
+  if (!a.ok && !a.audited) return;
+
   try {
     if (req.method === 'GET') {
       const { date, chartNo, days } = req.query;

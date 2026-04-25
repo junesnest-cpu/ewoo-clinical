@@ -7,6 +7,7 @@
  */
 
 import publicConfig from '../../../lib/firebasePublicConfig.json';
+import { requireAuth } from '../../../lib/verifyAuth';
 
 const DB_URL = publicConfig.ward.databaseURL;
 const API_KEY = publicConfig.ward.apiKey;
@@ -70,6 +71,9 @@ async function getPatients() {
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
+
+  const a = await requireAuth(req, res);
+  if (!a.ok && !a.audited) return;
 
   const q = (req.query.q || '').trim();
   if (!q) return res.json({ patients: [] });

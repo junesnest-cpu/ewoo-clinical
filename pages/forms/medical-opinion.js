@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { auth } from '../../lib/firebaseConfig';
+import { apiFetch } from '../../lib/apiFetch';
 
 export default function MedicalOpinion() {
   const [query, setQuery] = useState('');
@@ -21,7 +21,7 @@ export default function MedicalOpinion() {
     if (!trimmed || selectedPatient) { if (!selectedPatient) setResults(null); return; }
     const timer = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/patients/search?q=${encodeURIComponent(trimmed)}`);
+        const r = await apiFetch(`/api/patients/search?q=${encodeURIComponent(trimmed)}`);
         if (r.ok) {
           const data = await r.json();
           setResults(data.patients || []);
@@ -58,7 +58,7 @@ export default function MedicalOpinion() {
 
     setLoading(true);
     try {
-      const r = await fetch('/api/emr/opinion-data', {
+      const r = await apiFetch('/api/emr/opinion-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chartNo: patient.chartNo }),
@@ -95,7 +95,7 @@ export default function MedicalOpinion() {
     setLoading(true);
     setDraft('');
     try {
-      const r = await fetch('/api/emr/opinion-data', {
+      const r = await apiFetch('/api/emr/opinion-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -145,13 +145,9 @@ export default function MedicalOpinion() {
         ...opinionData,
         admissions: selectedAdmission ? [selectedAdmission] : opinionData.admissions,
       };
-      const token = await auth.currentUser?.getIdToken();
-      const r = await fetch('/api/generate', {
+      const r = await apiFetch('/api/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           formType: 'medical_opinion',
           patientData: dataForAI,

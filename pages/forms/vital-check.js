@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../_app';
+import { apiFetch } from '../../lib/apiFetch';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const FLOOR_LABELS = { '2': '2층', '3': '3층', '5': '5층', '6': '6층' };
@@ -194,9 +195,9 @@ export default function VitalCheck() {
     (async () => {
       try {
         const [patRes, vitRes, ydayRes] = await Promise.all([
-          fetch(`/api/rounding?date=${dateKey}`),
-          fetch(`/api/vitals?date=${dateKey}`),
-          fetch(`/api/vitals?date=${yesterday}`),
+          apiFetch(`/api/rounding?date=${dateKey}`),
+          apiFetch(`/api/vitals?date=${dateKey}`),
+          apiFetch(`/api/vitals?date=${yesterday}`),
         ]);
         if (patRes.ok) {
           const d = await patRes.json();
@@ -223,7 +224,7 @@ export default function VitalCheck() {
       const current = vitals[chartNo]?.[session] || {};
       const updated = { ...current, [field]: value === '' ? null : Number(value) };
       try {
-        await fetch('/api/vitals', {
+        await apiFetch('/api/vitals', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date: dateKey, session, chartNo, vitals: updated, userId }),
@@ -262,7 +263,7 @@ export default function VitalCheck() {
     (async () => {
       const current = vitals[chartNo]?.[session] || {};
       try {
-        await fetch('/api/vitals', {
+        await apiFetch('/api/vitals', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date: dateKey, session, chartNo, vitals: { ...current, ...updated }, userId }),
@@ -373,7 +374,7 @@ export default function VitalCheck() {
     setHistoryLoading(true);
     setHistoryData([]);
     try {
-      const r = await fetch(`/api/vitals?chartNo=${patient.chartNo}&days=14`);
+      const r = await apiFetch(`/api/vitals?chartNo=${patient.chartNo}&days=14`);
       if (r.ok) {
         const d = await r.json();
         setHistoryData(d.history || []);

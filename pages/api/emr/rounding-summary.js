@@ -6,12 +6,16 @@
  * Firestore에 없으면 EMR 프록시로 fallback
  */
 import { adminDb } from '../../../lib/firebaseAdmin';
+import { requireAuth } from '../../../lib/verifyAuth';
 
 const EMR_PROXY_URL = process.env.EMR_PROXY_URL;
 const EMR_PROXY_KEY = process.env.EMR_PROXY_KEY || 'ewoo-emr-2026';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
+
+  const a = await requireAuth(req, res);
+  if (!a.ok && !a.audited) return;
 
   const dateKey = new Date().toISOString().slice(0, 10);
 

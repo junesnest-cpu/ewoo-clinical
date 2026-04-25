@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { apiFetch } from '../lib/apiFetch';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -25,7 +26,7 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('/api/emr/rounding-summary');
+        const r = await apiFetch('/api/emr/rounding-summary');
         if (r.ok) {
           const data = await r.json();
           setPatientCount((data.patients || []).length);

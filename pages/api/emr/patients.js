@@ -5,8 +5,12 @@
  */
 import sql from 'mssql';
 import { getPool } from '../../../lib/emrPool';
+import { requireAuth } from '../../../lib/verifyAuth';
 
 export default async function handler(req, res) {
+  const a = await requireAuth(req, res);
+  if (!a.ok && !a.audited) return;
+
   try {
     const pool = await getPool();
 

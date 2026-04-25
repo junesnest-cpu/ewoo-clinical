@@ -3,11 +3,16 @@
  * POST /api/emr/find-memos { chartNo }
  */
 
+import { requireAuth } from '../../../lib/verifyAuth';
+
 const EMR_PROXY_URL = process.env.EMR_PROXY_URL;
 const EMR_PROXY_KEY = process.env.EMR_PROXY_KEY || 'ewoo-emr-2026';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+  const a = await requireAuth(req, res);
+  if (!a.ok && !a.audited) return;
 
   const { chartNo } = req.body;
   if (!chartNo) return res.status(400).json({ error: 'chartNo required' });

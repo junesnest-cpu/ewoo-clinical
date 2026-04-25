@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../_app';
+import { apiFetch } from '../../lib/apiFetch';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const FLOOR_LABELS = { '2': '2층', '3': '3층', '5': '5층', '6': '6층' };
@@ -42,7 +43,7 @@ export default function NurseRounding() {
     (async () => {
       try {
         // Firestore 우선
-        const r = await fetch(`/api/rounding?date=${dateKey}`);
+        const r = await apiFetch(`/api/rounding?date=${dateKey}`);
         if (r.ok) {
           const data = await r.json();
           if (data.patients?.length) {
@@ -55,7 +56,7 @@ export default function NurseRounding() {
       } catch (e) {}
       // Fallback: EMR 직접 조회 (로컬 개발용)
       try {
-        const r = await fetch('/api/emr/rounding');
+        const r = await apiFetch('/api/emr/rounding');
         if (r.ok) {
           const data = await r.json();
           setPatients(data.patients || []);
@@ -70,7 +71,7 @@ export default function NurseRounding() {
     if (!userId) return;
     (async () => {
       try {
-        const r = await fetch(`/api/rounding?date=${dateKey}&notes=${userId}`);
+        const r = await apiFetch(`/api/rounding?date=${dateKey}&notes=${userId}`);
         if (r.ok) {
           const data = await r.json();
           setNotes(data.notes || {});
@@ -85,7 +86,7 @@ export default function NurseRounding() {
     if (saveTimers.current[chartNo]) clearTimeout(saveTimers.current[chartNo]);
     saveTimers.current[chartNo] = setTimeout(async () => {
       try {
-        await fetch('/api/rounding', {
+        await apiFetch('/api/rounding', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date: dateKey, userId, chartNo, note: value }),

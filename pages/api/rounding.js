@@ -5,8 +5,12 @@
  * GET  /api/rounding?date=2026-04-13&notes=userId  — 참고사항 조회
  */
 import { adminDb } from '../../lib/firebaseAdmin';
+import { requireAuth } from '../../lib/verifyAuth';
 
 export default async function handler(req, res) {
+  const a = await requireAuth(req, res);
+  if (!a.ok && !a.audited) return;
+
   try {
     if (req.method === 'GET') {
       const { date, notes: userId } = req.query;

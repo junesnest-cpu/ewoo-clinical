@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../_app';
+import { apiFetch } from '../../lib/apiFetch';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const FLOOR_LABELS = { '2': '2병동', '3': '3병동', '5': '5병동', '6': '6병동' };
@@ -56,7 +57,7 @@ export default function DoctorRounding() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('/api/emr/rounding-summary');
+        const r = await apiFetch('/api/emr/rounding-summary');
         if (r.ok) {
           const data = await r.json();
           setPatients(data.patients || []);
