@@ -43,6 +43,13 @@ export default async function handler(req, res) {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email·password required' });
 
+  // safeInit 패턴 도입(2026-04-26) 후 Admin SDK 가 null 일 수 있음.
+  // migrate 는 양쪽 Admin 모두 필수 (계정 생성·비밀번호 동기화) → 503 반환.
+  if (!approvalAdminAuth || !approvalAdminDb || !wardAdminAuth) {
+    console.warn('[migrate] Admin SDK 비활성 — env 점검 필요');
+    return res.status(503).json({ error: 'auth service unavailable' });
+  }
+
   const rlKey = `migrate/${getClientIp(req)}__${sanitizeKey(email)}`;
   const rl = await checkRateLimit({ key: rlKey, max: 5, windowMs: 5 * 60 * 1000, db: approvalAdminDb });
   if (!rl.allowed) {
@@ -63,17 +70,23 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'invalid credentials' });
     }
 
+    let synced = null;
     if (approvalAuth && !wardAuthRes) {
       await ensureAccount(wardAdminAuth, email, password, approvalAuth.localId);
+      synced = 'ward';
     } else if (!approvalAuth && wardAuthRes) {
       const user = await ensureAccount(approvalAdminAuth, email, password, wardAuthRes.localId);
       const emailKey = email.replace(/\./g, ',').replace(/@/g, '_at_');
       const profRef = approvalAdminDb.ref(`users/${emailKey}`);
       const snap = await profRef.once('value');
       if (snap.exists()) await profRef.update({ uid: user.uid });
+      synced = 'approval';
     }
 
-    return res.status(200).json({ ok: true, approvalOk: !!approvalAuth, wardOk: !!wardAuthRes });
+    // 응답 정보 누출 방지(2026-04-26): approvalOk/wardOk 제거.
+    // 어느 쪽이 동기화됐는지는 서버 로그에만 남겨 enumeration 차단.
+    if (synced) console.log(`[migrate] ${email}: ${synced} 동기화 완료`);
+    return res.status(200).json({ ok: true });
   } catch (e) {
     console.error('sync error:', e.message);
     return res.status(500).json({ error: e.message });
